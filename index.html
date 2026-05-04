@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>세일즈 CRM 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; }
+  input, button, select { font-family: inherit; }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback } = React;
+
+const COLORS = {
+  purple: { bg: "#EEEDFE", text: "#3C3489", border: "#534AB7" },
+  teal:   { bg: "#E1F5EE", text: "#085041", border: "#0F6E56" },
+  blue:   { bg: "#E6F1FB", text: "#0C447C", border: "#185FA5" },
+  amber:  { bg: "#FAEEDA", text: "#633806", border: "#854F0B" },
+  gray:   { bg: "#F1EFE8", text: "#444441", border: "#5F5E5A" },
+  red:    { bg: "#FCEBEB", text: "#791F1F", border: "#A32D2D" },
+};
+
+const SAMPLE = {
+  customers: [
+    { "고객사명":"삼성전자","기업형태":"대기업","담당자":"김대리","딜규모(만원)":5000,"상태":"협상" },
+    { "고객사명":"현대자동차","기업형태":"대기업","담당자":"이과장","딜규모(만원)":3500,"상태":"Trial" },
+    { "고객사명":"카카오","기업형태":"중견기업","담당자":"박차장","딜규모(만원)":2000,"상태":"미팅" },
+    { "고객사명":"무신사","기업형태":"중견기업","담당자":"최부장","딜규모(만원)":1800,"상태":"클로징" },
+    { "고객사명":"하이마트","기업형태":"중소기업","담당자":"정대리","딜규모(만원)":800,"상태":"리드발굴" },
+    { "고객사명":"토스랩","기업형태":"스타트업","담당자":"윤팀장","딜규모(만원)":400,"상태":"미팅" },
+    { "고객사명":"뱅크샐러드","기업형태":"스타트업","담당자":"한대리","딜규모(만원)":350,"상태":"Trial" },
+    { "고객사명":"GS리테일","기업형태":"대기업","담당자":"조부장","딜규모(만원)":4200,"상태":"협상" },
+  ],
+  pipeline: [
+    { "단계":"리드발굴","딜수":87,"총금액(만원)":87000 },
+    { "단계":"미팅","딜수":43,"총금액(만원)":43000 },
+    { "단계":"Trial","딜수":28,"총금액(만원)":28000 },
+    { "단계":"협상","딜수":16,"총금액(만원)":16000 },
+    { "단계":"클로징","딜수":9,"총금액(만원)":9000 },
+  ],
+  team: [
+    { "담당자":"김영업","클로징딜수":12,"매출(만원)":4800,"전환율(%)":72,"트렌드(%)":8 },
+    { "담당자":"이성과","클로징딜수":9,"매출(만원)":3600,"전환율(%)":65,"트렌드(%)":3 },
+    { "담당자":"박달성","클로징딜수":7,"매출(만원)":2800,"전환율(%)":58,"트렌드(%)":-2 },
+    { "담당자":"최클로즈","클로징딜수":15,"매출(만원)":6000,"전환율(%)":80,"트렌드(%)":12 },
+    { "담당자":"정파이프","클로징딜수":5,"매출(만원)":2000,"전환율(%)":45,"트렌드(%)":-5 },
+  ],
+  revenue: [
+    {"월":"1월","매출(만원)":12000},{"월":"2월","매출(만원)":9500},
+    {"월":"3월","매출(만원)":14000},{"월":"4월","매출(만원)":16000},
+    {"월":"5월","매출(만원)":13000},{"월":"6월","매출(만원)":17500},
+    {"월":"7월","매출(만원)":19000},{"월":"8월","매출(만원)":15500},
+    {"월":"9월","매출(만원)":21000},{"월":"10월","매출(만원)":18500},
+    {"월":"11월","매출(만원)":22000},{"월":"12월","매출(만원)":24000},
+  ],
+};
+
+const scoreConfig = {
+  "대기업":   { score: 100, color: COLORS.purple },
+  "중견기업": { score: 75,  color: COLORS.blue },
+  "중소기업": { score: 50,  color: COLORS.teal },
+  "스타트업": { score: 25,  color: COLORS.amber },
+};
+const statusColors = {
+  "리드발굴": COLORS.gray, "미팅": COLORS.blue,
+  "Trial": COLORS.teal, "협상": COLORS.amber, "클로징": COLORS.purple,
+};
+const stageColors = ["#7F77DD","#1D9E75","#378ADD","#EF9F27","#E24B4A"];
+
+const s = {
+  root: { maxWidth: 900, margin: "0 auto", padding: "1.5rem" },
+  h1: { fontSize: 22, fontWeight: 500, marginBottom: 4 },
+  urlBox: { display:"flex", gap:8, alignItems:"center", padding:"12px 16px", background:"#fff", borderRadius:8, border:"1px solid #e0e0e0", marginBottom:12 },
+  urlInput: { flex:1, fontSize:13, padding:"6px 10px", border:"1px solid #ddd", borderRadius:6, outline:"none" },
+  connectBtn: { fontSize:13, padding:"7px 16px", border:"none", borderRadius:6, background:"#534AB7", color:"#fff", whiteSpace:"nowrap" },
+  refreshBtn: { fontSize:12, padding:"6px 12px", border:"1px solid #ddd", borderRadius:6, background:"#fff" },
+  tabs: { display:"flex", gap:4, marginBottom:"1.5rem", borderBottom:"1px solid #e0e0e0", paddingBottom:8 },
+  tab: a => ({ padding:"6px 16px", fontSize:13, fontWeight:a?500:400, border: a?"1px solid #ddd":"1px solid transparent", borderRadius:6, background:a?"#fff":"transparent", color:a?"#1a1a1a":"#888" }),
+  card: { background:"#fff", border:"1px solid #e0e0e0", borderRadius:12, padding:"1.25rem", marginBottom:"1rem" },
+  cardTitle: { fontSize:15, fontWeight:500, marginBottom:"1rem" },
+  grid4: { display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:"1.5rem" },
+  kpiCard: c => ({ background:c.bg, borderRadius:8, padding:"1rem", border:`1px solid ${c.border}` }),
+  badge: c => ({ fontSize:11, padding:"2px 8px", borderRadius:6, background:c.bg, color:c.text, border:`1px solid ${c.border}`, whiteSpace:"nowrap", display:"inline-block" }),
+  th: { textAlign:"left", padding:"0 8px 8px", fontSize:11, fontWeight:500, color:"#888", borderBottom:"1px solid #eee" },
+  td: { padding:"10px 8px", borderBottom:"1px solid #f0f0f0", fontSize:13 },
+  barBg: { background:"#f0f0f0", borderRadius:4, height:6, overflow:"hidden" },
+  aiBox: { marginTop:12, background:"#f8f8f8", borderRadius:8, padding:"12px 16px", fontSize:13, lineHeight:1.7, border:"1px solid #eee" },
+  aiBtn: { fontSize:12, padding:"6px 14px", border:"1px solid #ddd", borderRadius:6, background:"#fff" },
+  errBox: { fontSize:12, color:"#791F1F", padding:"8px 12px", background:"#FCEBEB", borderRadius:6, border:"1px solid #A32D2D", marginBottom:12 },
+  syncTxt: { fontSize:11, color:"#888", marginBottom:12 },
+};
+
+function App() {
+  const [urlInput, setUrlInput] = useState("");
+  const [sheetUrl, setSheetUrl] = useState("");
+  const [data, setData] = useState(SAMPLE);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState(null);
+  const [activeTab, setActiveTab] = useState("pipeline");
+  const [selectedStage, setSelectedStage] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [teamAiLoading, setTeamAiLoading] = useState(false);
+  const [teamAiText, setTeamAiText] = useState("");
+
+  const fetchSheet = useCallback((url) => {
+    setLoading(true); setError("");
+    window.callback = (json) => {
+      if (json.status === "ok" && json.data) {
+        setData({ ...SAMPLE, ...json.data });
+        setLastSync(new Date().toLocaleTimeString("ko-KR"));
+      } else {
+        setError("데이터 오류: " + (json.message || "알 수 없는 오류"));
+      }
+      setLoading(false);
+      document.getElementById("jsonp-script")?.remove();
+    };
+    const script = document.createElement("script");
+    script.id = "jsonp-script";
+    script.src = url + "?callback=callback";
+    script.onerror = () => {
+      setError("연결 실패. Apps Script URL과 배포 설정을 확인해 주세요.");
+      setLoading(false);
+    };
+    document.body.appendChild(script);
+  }, []);
+
+  function handleConnect() {
+    const url = urlInput.trim();
+    if (!url.startsWith("https://script.google.com")) { setError("Google Apps Script URL을 입력해 주세요."); return; }
+    setSheetUrl(url); fetchSheet(url);
+  }
+
+  async function fetchAI(prompt, setter, loadSetter) {
+    loadSetter(true); setter("");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:prompt}] })
+      });
+      const d = await res.json();
+      setter(d.content?.filter(b=>b.type==="text").map(b=>b.text).join("")||"응답 없음");
+    } catch { setter("AI 제안을 불러오는 중 오류가 발생했습니다."); }
+    loadSetter(false);
+  }
+
+  function handleStageClick(stage) {
+    setSelectedStage(stage); setAiText("");
+    const p = data.pipeline.find(x=>x["단계"]===stage);
+    if (!p) return;
+    fetchAI(`당신은 B2B 세일즈 전문 컨설턴트입니다. 영업 파이프라인의 "${stage}" 단계에 현재 ${p["딜수"]}건, 총 ${(p["총금액(만원)"]/10000).toFixed(1)}억원 규모의 딜이 있습니다. 이 수치를 바탕으로 영업팀이 지금 당장 취해야 할 구체적인 액션 플랜 3가지를 제안해주세요. 한국어로 간결하게 답변해주세요.`, setAiText, setAiLoading);
+  }
+
+  function handleTeamAI() {
+    setTeamAiText("");
+    const sorted = [...data.team].sort((a,b)=>b["전환율(%)"]-a["전환율(%)"]);
+    const top = sorted[0], low = sorted[sorted.length-1];
+    fetchAI(`당신은 B2B 세일즈 팀 코치입니다. 팀 현황: 총 ${data.team.length}명, 최고 성과자 ${top["담당자"]}(전환율 ${top["전환율(%)"]}%), 최저 성과자 ${low["담당자"]}(전환율 ${low["전환율(%)"]}%). 다음 분기 성과를 20% 향상시키기 위한 구체적인 업무 방식 개선 액션 플랜 4가지를 제안해주세요. 한국어로 간결하게 답변해주세요.`, setTeamAiText, setTeamAiLoading);
+  }
+
+  const pipeline = data.pipeline;
+  const customers = [...data.customers].sort((a,b)=>(scoreConfig[b["기업형태"]]?.score||0)-(scoreConfig[a["기업형태"]]?.score||0));
+  const team = [...data.team].sort((a,b)=>b["전환율(%)"]-a["전환율(%)"]);
+
+  // 고객DB 클로징날짜 기준 월별 매출 자동 집계
+  const monthNames = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+  const revenueMap = {};
+  data.customers.forEach(c => {
+    if (c["상태"] === "클로징" && c["클로징날짜"]) {
+      const d = new Date(c["클로징날짜"]);
+      if (!isNaN(d)) {
+        const key = monthNames[d.getMonth()];
+        revenueMap[key] = (revenueMap[key] || 0) + Number(c["딜규모(만원)"] || 0);
+      }
+    }
+  });
+  const revenue = monthNames.map(m => ({ "월": m, "매출(만원)": revenueMap[m] || 0 }));
+  const maxRevenue = Math.max(...revenue.map(r=>r["매출(만원)"]),1);
+  const totalRevenue = revenue.reduce((s,r)=>s+r["매출(만원)"],0);
+  const avgRevenue = Math.round(totalRevenue/(revenue.filter(r=>r["매출(만원)"]>0).length||1));
+  const maxCount = Math.max(...pipeline.map(p=>p["딜수"]),1);
+  const totalDeals = pipeline.reduce((s,p)=>s+p["딜수"],0);
+  const closingDeals = pipeline.find(p=>p["단계"]==="클로징")?.["딜수"]||0;
+  const convRate = totalDeals>0?((closingDeals/totalDeals)*100).toFixed(1):0;
+
+  const kpis = [
+    { label:"총 매출", value:`₩${(totalRevenue/10000).toFixed(1)}억`, color:COLORS.purple },
+    { label:"총 딜 수", value:`${totalDeals}건`, color:COLORS.teal },
+    { label:"클로징 전환율", value:`${convRate}%`, color:COLORS.blue },
+    { label:"월평균 매출", value:`₩${avgRevenue.toLocaleString()}만`, color:COLORS.amber },
+  ];
+
+  return (
+    <div style={s.root}>
+      <h1 style={s.h1}>세일즈 CRM 대시보드</h1>
+      <p style={{fontSize:12,color:"#888",marginBottom:"1rem"}}>Google Sheets 연동 · 실시간 데이터</p>
+
+      <div style={s.urlBox}>
+        <div style={{width:8,height:8,borderRadius:"50%",background:sheetUrl&&!error?"#1D9E75":"#ccc",flexShrink:0}}/>
+        <input style={s.urlInput} placeholder="Apps Script Web App URL (https://script.google.com/.../exec)" value={urlInput} onChange={e=>setUrlInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleConnect()}/>
+        <button style={s.connectBtn} onClick={handleConnect}>{loading?"연결 중...":"연결"}</button>
+        {sheetUrl && <button style={s.refreshBtn} onClick={()=>fetchSheet(sheetUrl)}>새로고침</button>}
+      </div>
+      {error && <div style={s.errBox}>{error}</div>}
+      {lastSync && !error && <p style={s.syncTxt}>마지막 동기화: {lastSync} · Google Sheets 연동됨</p>}
+      {!sheetUrl && <p style={s.syncTxt}>샘플 데이터 표시 중 · URL 입력 후 연결하면 실제 데이터로 전환됩니다</p>}
+
+      <div style={s.grid4}>
+        {kpis.map(k=>(
+          <div key={k.label} style={s.kpiCard(k.color)}>
+            <p style={{fontSize:12,color:k.color.text,marginBottom:6}}>{k.label}</p>
+            <p style={{fontSize:20,fontWeight:500,color:k.color.text}}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={s.tabs}>
+        {[["pipeline","영업 파이프라인"],["leads","리드/고객 관리"],["team","팀 성과"],["revenue","매출 현황"]].map(([id,label])=>(
+          <button key={id} style={s.tab(activeTab===id)} onClick={()=>setActiveTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {activeTab==="pipeline" && (
+        <div style={s.card}>
+          <p style={s.cardTitle}>영업 파이프라인 · 단계 클릭 시 AI 액션 플랜 생성</p>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {pipeline.map((p,i)=>(
+              <div key={p["단계"]} style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{height:40,borderRadius:8,background:stageColors[i],width:`${Math.max((p["딜수"]/maxCount)*100,8)}%`,display:"flex",alignItems:"center",padding:"0 12px",cursor:"pointer",minWidth:90,transition:"opacity .15s"}}
+                  onClick={()=>handleStageClick(p["단계"])}
+                  onMouseEnter={e=>e.currentTarget.style.opacity=".8"}
+                  onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+                  <span style={{fontSize:12,fontWeight:500,color:"#fff"}}>{p["단계"]}</span>
+                </div>
+                <span style={{fontSize:12,color:"#888",minWidth:90}}>{p["딜수"]}건 · ₩{(p["총금액(만원)"]/10000).toFixed(1)}억</span>
+                {i<pipeline.length-1&&pipeline[i+1]&&(
+                  <span style={{fontSize:11,color:"#aaa"}}>→ {Math.round((pipeline[i+1]["딜수"]/p["딜수"])*100)}% 전환</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {selectedStage && (
+            <div style={s.aiBox}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={s.badge(COLORS.purple)}>AI 액션 플랜</span>
+                <span style={{fontSize:12,fontWeight:500}}>{selectedStage} 단계</span>
+              </div>
+              {aiLoading ? <p style={{fontSize:13,color:"#888"}}>AI 분석 중...</p>
+                : <p style={{margin:0,fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{aiText}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab==="leads" && (
+        <div style={s.card}>
+          <p style={s.cardTitle}>리드/고객 관리 · 리드 스코어링</p>
+          <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            {Object.entries(scoreConfig).map(([type,cfg])=>(
+              <span key={type} style={s.badge(cfg.color)}>{type} {cfg.score}점</span>
+            ))}
+          </div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr>{["고객사명","기업형태","리드 스코어","상태","담당자","딜 규모"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {customers.map(c=>{
+                const sc=scoreConfig[c["기업형태"]]||{score:0,color:COLORS.gray};
+                const st=statusColors[c["상태"]]||COLORS.gray;
+                return (
+                  <tr key={c["고객사명"]}>
+                    <td style={{...s.td,fontWeight:500}}>{c["고객사명"]}</td>
+                    <td style={s.td}><span style={s.badge(sc.color)}>{c["기업형태"]}</span></td>
+                    <td style={s.td}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{...s.barBg,flex:1}}><div style={{height:6,borderRadius:4,background:sc.color.border,width:`${sc.score}%`}}/></div>
+                        <span style={{fontSize:12,fontWeight:500,minWidth:28}}>{sc.score}</span>
+                      </div>
+                    </td>
+                    <td style={s.td}><span style={s.badge(st)}>{c["상태"]}</span></td>
+                    <td style={{...s.td,color:"#888"}}>{c["담당자"]}</td>
+                    <td style={{...s.td,fontWeight:500}}>₩{Number(c["딜규모(만원)"]).toLocaleString()}만</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab==="team" && (
+        <div>
+          <div style={s.card}>
+            <p style={s.cardTitle}>팀 성과 지표</p>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr>{["담당자","클로징 딜","매출","전환율","트렌드"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {team.map(m=>(
+                  <tr key={m["담당자"]}>
+                    <td style={{...s.td,fontWeight:500}}>{m["담당자"]}</td>
+                    <td style={s.td}>{m["클로징딜수"]}건</td>
+                    <td style={s.td}>₩{Number(m["매출(만원)"]).toLocaleString()}만</td>
+                    <td style={s.td}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{...s.barBg,flex:1}}><div style={{height:6,borderRadius:4,background:"#7F77DD",width:`${m["전환율(%)"]}%`}}/></div>
+                        <span style={{fontSize:12,fontWeight:500,minWidth:32}}>{m["전환율(%)"]}%</span>
+                      </div>
+                    </td>
+                    <td style={s.td}><span style={{fontSize:12,fontWeight:500,color:m["트렌드(%)"]>=0?COLORS.teal.text:COLORS.red.text}}>{m["트렌드(%)"]>=0?"+":""}{m["트렌드(%)"]}%</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={s.card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <p style={{...s.cardTitle,margin:0}}>팀 AI 액션 플랜</p>
+              <button style={s.aiBtn} onClick={handleTeamAI}>AI 새로 분석 ↗</button>
+            </div>
+            {teamAiLoading ? <p style={{fontSize:13,color:"#888"}}>AI 분석 중...</p>
+              : teamAiText
+                ? <div style={s.aiBox}><p style={{margin:0,fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{teamAiText}</p></div>
+                : <p style={{fontSize:13,color:"#888"}}>"AI 새로 분석" 버튼을 눌러 팀 맞춤 액션 플랜을 받아보세요.</p>}
+          </div>
+        </div>
+      )}
+
+      {activeTab==="revenue" && (
+        <div style={s.card}>
+          <p style={s.cardTitle}>월별 매출 현황</p>
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,height:200,marginBottom:16}}>
+            {revenue.map((r,i)=>(
+              <div key={r["월"]} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#888"}}>{Math.round(r["매출(만원)"]/1000)}M</span>
+                <div style={{width:"100%",borderRadius:"4px 4px 0 0",height:`${(r["매출(만원)"]/maxRevenue)*160}px`,background:i===revenue.length-1?"#534AB7":"#CECBF6"}}/>
+                <span style={{fontSize:10,color:"#888"}}>{r["월"]}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            {[
+              {label:"연간 총매출",value:`₩${(totalRevenue/10000).toFixed(1)}억`,color:COLORS.purple},
+              {label:"월평균 매출",value:`₩${avgRevenue.toLocaleString()}만`,color:COLORS.teal},
+              {label:"최고 매출월",value:revenue.reduce((a,b)=>a["매출(만원)"]>b["매출(만원)"]?a:b,revenue[0])?.["월"]||"-",color:COLORS.blue},
+            ].map(k=>(
+              <div key={k.label} style={s.kpiCard(k.color)}>
+                <p style={{fontSize:12,color:k.color.text,marginBottom:6}}>{k.label}</p>
+                <p style={{fontSize:18,fontWeight:500,color:k.color.text}}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
