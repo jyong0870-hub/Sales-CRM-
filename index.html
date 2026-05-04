@@ -17,7 +17,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useCallback } = React;
+const { useState, useCallback, useEffect } = React;
 
 const COLORS = {
   purple: { bg: "#EEEDFE", text: "#3C3489", border: "#534AB7" },
@@ -111,6 +111,13 @@ function App() {
   const [aiText, setAiText] = useState("");
   const [teamAiLoading, setTeamAiLoading] = useState(false);
   const [teamAiText, setTeamAiText] = useState("");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("anthropic_api_key") || "");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  useEffect(() => {
+    if (!apiKey) setShowApiKey(true);
+  }, []);
 
   const fetchSheet = useCallback((url) => {
     setLoading(true); setError("");
@@ -140,15 +147,32 @@ function App() {
     setSheetUrl(url); fetchSheet(url);
   }
 
+  function handleSaveApiKey() {
+    const key = apiKeyInput.trim();
+    if (!key.startsWith("sk-ant-")) { alert("올바른 Anthropic API 키를 입력해 주세요. (sk-ant- 로 시작)"); return; }
+    localStorage.setItem("anthropic_api_key", key);
+    setApiKey(key);
+    setApiKeyInput("");
+    setShowApiKey(false);
+  }
+
   async function fetchAI(prompt, setter, loadSetter) {
+    if (!apiKey) { setter("API 키를 먼저 설정해 주세요."); return; }
     loadSetter(true); setter("");
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:prompt}] })
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] })
       });
       const d = await res.json();
-      setter(d.content?.filter(b=>b.type==="text").map(b=>b.text).join("")||"응답 없음");
+      if (d.error) { setter("오류: " + d.error.message); }
+      else { setter(d.content?.filter(b=>b.type==="text").map(b=>b.text).join("") || "응답 없음"); }
     } catch { setter("AI 제안을 불러오는 중 오류가 발생했습니다."); }
     loadSetter(false);
   }
@@ -202,6 +226,31 @@ function App() {
       {error && <div style={s.errBox}>{error}</div>}
       {lastSync && !error && <p style={s.syncTxt}>마지막 동기화: {lastSync} · Google Sheets 연동됨</p>}
       {!sheetUrl && <p style={s.syncTxt}>샘플 데이터 표시 중 · URL 입력 후 연결하면 실제 데이터로 전환됩니다</p>}
+
+      <div style={{...s.urlBox, flexWrap:"wrap", gap:8, marginBottom:16}}>
+        <div style={{width:8,height:8,borderRadius:"50%",background:apiKey?"#1D9E75":"#ccc",flexShrink:0}}/>
+        <span style={{fontSize:13,color:"#555",whiteSpace:"nowrap"}}>AI (Anthropic)</span>
+        {showApiKey ? (
+          <>
+            <input
+              style={{...s.urlInput, fontFamily:"monospace"}}
+              type="password"
+              placeholder="Anthropic API 키 입력 (sk-ant-...)"
+              value={apiKeyInput}
+              onChange={e=>setApiKeyInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleSaveApiKey()}
+            />
+            <button style={s.connectBtn} onClick={handleSaveApiKey}>저장</button>
+            {apiKey && <button style={s.refreshBtn} onClick={()=>setShowApiKey(false)}>취소</button>}
+          </>
+        ) : (
+          <>
+            <span style={{fontSize:12,color:"#888",flex:1}}>API 키 설정됨 · AI 액션 플랜 사용 가능</span>
+            <button style={s.refreshBtn} onClick={()=>{setApiKeyInput("");setShowApiKey(true);}}>변경</button>
+            <button style={{...s.refreshBtn,color:"#a32d2d",borderColor:"#f0c0c0"}} onClick={()=>{localStorage.removeItem("anthropic_api_key");setApiKey("");setShowApiKey(true);}}>삭제</button>
+          </>
+        )}
+      </div>
 
       <div style={s.grid4}>
         {kpis.map(k=>(
