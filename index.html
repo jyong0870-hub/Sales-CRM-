@@ -171,19 +171,8 @@ function App() {
   const customers = [...data.customers].sort((a,b)=>(scoreConfig[b["기업형태"]]?.score||0)-(scoreConfig[a["기업형태"]]?.score||0));
   const team = [...data.team].sort((a,b)=>b["전환율(%)"]-a["전환율(%)"]);
 
-  // 고객DB 클로징날짜 기준 월별 매출 자동 집계
-  const monthNames = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
-  const revenueMap = {};
-  data.customers.forEach(c => {
-    if (c["상태"] === "클로징" && c["클로징날짜"]) {
-      const d = new Date(c["클로징날짜"]);
-      if (!isNaN(d)) {
-        const key = monthNames[d.getMonth()];
-        revenueMap[key] = (revenueMap[key] || 0) + Number(c["딜규모(만원)"] || 0);
-      }
-    }
-  });
-  const revenue = monthNames.map(m => ({ "월": m, "매출(만원)": revenueMap[m] || 0 }));
+  // 매출현황 시트 데이터 직접 사용
+  const revenue = data.revenue;
   const maxRevenue = Math.max(...revenue.map(r=>r["매출(만원)"]),1);
   const totalRevenue = revenue.reduce((s,r)=>s+r["매출(만원)"],0);
   const avgRevenue = Math.round(totalRevenue/(revenue.filter(r=>r["매출(만원)"]>0).length||1));
