@@ -171,11 +171,11 @@ function App() {
   const customers = [...data.customers].sort((a,b)=>(scoreConfig[b["기업형태"]]?.score||0)-(scoreConfig[a["기업형태"]]?.score||0));
   const team = [...data.team].sort((a,b)=>b["전환율(%)"]-a["전환율(%)"]);
 
-  // 매출현황 시트 데이터 직접 사용
-  const revenue = data.revenue;
-  const maxRevenue = Math.max(...revenue.map(r=>r["매출(만원)"]),1);
-  const totalRevenue = revenue.reduce((s,r)=>s+r["매출(만원)"],0);
-  const avgRevenue = Math.round(totalRevenue/(revenue.filter(r=>r["매출(만원)"]>0).length||1));
+  // 매출현황 시트 데이터 사용 (없거나 비어있으면 샘플 유지)
+  const revenue = (Array.isArray(data.revenue) && data.revenue.length > 0) ? data.revenue : SAMPLE.revenue;
+  const maxRevenue = Math.max(...revenue.map(r=>Number(r["매출(만원)"]||0)),1);
+  const totalRevenue = revenue.reduce((s,r)=>s+Number(r["매출(만원)"]||0),0);
+  const avgRevenue = Math.round(totalRevenue/(revenue.filter(r=>Number(r["매출(만원)"])>0).length||1));
   const maxCount = Math.max(...pipeline.map(p=>p["딜수"]),1);
   const totalDeals = pipeline.reduce((s,p)=>s+p["딜수"],0);
   const closingDeals = pipeline.find(p=>p["단계"]==="클로징")?.["딜수"]||0;
