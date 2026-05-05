@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn 분석기</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root {
+      --bg:       #eef2f7;
+      --surface:  #ffffff;
+      --surface2: #f8fafc;
+      --surface3: #f1f5f9;
+      --border:   #e2e8f0;
+      --border2:  #cbd5e1;
+      --accent:       #0a66c2;
+      --accent-hover: #0856a8;
+      --accent-light: #e8f1fb;
+      --accent-glow:  rgba(10,102,194,0.10);
+      --green:       #16a34a;
+      --green-light: #dcfce7;
+      --green-glow:  rgba(22,163,74,0.10);
+      --purple:  #7c3aed;
+      --amber:   #d97706;
+      --red:     #dc2626;
+      --cyan:    #0891b2;
+      --text:       #1e293b;
+      --text-muted: #64748b;
+      --text-dim:   #94a3b8;
+      --shadow-sm:  0 1px 2px rgba(0,0,0,0.06);
+      --shadow:     0 1px 4px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+      --shadow-md:  0 4px 12px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* ── Water Droplets Background ── */
+    .drops-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .drop {
+      position: absolute;
+      border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+      background: radial-gradient(ellipse at 35% 30%,
+        rgba(10,102,194,0.13) 0%,
+        rgba(10,102,194,0.04) 60%,
+        transparent 100%);
+      border: 1px solid rgba(10,102,194,0.10);
+      animation: dropFloat linear infinite;
+    }
+    @keyframes dropFloat {
+      0%   { transform: translateY(0)    rotate(var(--rot)) scale(1);   opacity: var(--op); }
+      45%  { transform: translateY(-22px) rotate(var(--rot)) scale(1.03); opacity: calc(var(--op) * 1.4); }
+      100% { transform: translateY(0)    rotate(var(--rot)) scale(1);   opacity: var(--op); }
+    }
+    /* each drop positioned & sized via inline style + CSS vars */
+
+    /* ── Z-index wrapper so content sits above drops ── */
+    .header, .tabs-bar, .container { position: relative; z-index: 1; }
+
+    /* ── Header ── */
+    .header {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-logo {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 14px; color: #fff;
+      box-shadow: 0 2px 6px rgba(10,102,194,0.35);
+    }
+    .header h1 { font-size: 16px; font-weight: 700; color: var(--text); }
+    .file-status { margin-left: auto; display: flex; gap: 8px; }
+    .file-chip {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      display: flex; align-items: center; gap: 5px;
+      border: 1px solid var(--border2);
+      color: var(--text-dim);
+      background: var(--surface2);
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+    .file-chip.loaded {
+      border-color: #86efac;
+      color: var(--green);
+      background: var(--green-light);
+    }
+    .file-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* ── Tabs ── */
+    .tabs-bar {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      gap: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .tab-btn {
+      padding: 14px 20px;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-muted);
+      border: none; background: none; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+    .tab-btn.disabled { opacity: 0.4; cursor: not-allowed; }
+    .tab-badge {
+      font-size: 10px;
+      background: var(--surface3);
+      color: var(--text-muted);
+      padding: 2px 7px; border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .tab-btn.active .tab-badge { background: var(--accent-light); color: var(--accent); border-color: #bfdbfe; }
+
+    /* ── Container ── */
+    .container { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards (base) ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    /* ── Upload Section ── */
+    .upload-intro { text-align: center; margin-bottom: 24px; }
+    .upload-intro p { font-size: 13px; color: var(--text-muted); }
+    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 860px; margin: 0 auto 24px; }
+    .upload-slot {
+      background: var(--surface);
+      border: 2px dashed var(--border2);
+      border-radius: 16px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      box-shadow: var(--shadow-sm);
+    }
+    .upload-slot:hover, .upload-slot.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      box-shadow: 0 0 0 4px rgba(10,102,194,0.08);
+    }
+    .upload-slot.loaded {
+      border-style: solid; border-color: #86efac;
+      background: var(--green-light);
+      cursor: default;
+      box-shadow: 0 0 0 3px rgba(22,163,74,0.08);
+    }
+    .slot-icon { font-size: 36px; margin-bottom: 10px; }
+    .slot-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+    .slot-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.7; }
+    .slot-btn {
+      background: var(--accent); color: #fff;
+      border: none; padding: 9px 20px;
+      border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+      box-shadow: 0 2px 6px rgba(10,102,194,0.3);
+    }
+    .slot-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .slot-loaded-info { font-size: 13px; color: var(--green); font-weight: 700; }
+    .slot-loaded-sub { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+    .slot-remove {
+      position: absolute; top: 10px; right: 10px;
+      background: #fee2e2; border: 1px solid #fca5a5;
+      color: var(--red); cursor: pointer;
+      width: 22px; height: 22px; border-radius: 50%;
+      font-size: 12px; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .slot-remove:hover { background: var(--red); color: #fff; }
+
+    /* ── Guide ── */
+    .guide-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      max-width: 860px;
+      margin: 0 auto 32px;
+      box-shadow: var(--shadow-sm);
+    }
+    .guide-box summary { font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-muted); list-style: none; display: flex; align-items: center; gap: 6px; }
+    .guide-box summary:hover { color: var(--accent); }
+    .steps { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .step { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+    .step-num { min-width: 22px; height: 22px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; margin-top: 1px; }
+    .step b { color: var(--text); }
+    .step code { background: var(--accent-light); border: 1px solid #bfdbfe; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: var(--accent); font-weight: 600; }
+
+    /* ── Section header ── */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .section-header h2 { font-size: 18px; font-weight: 800; color: var(--text); }
+    .reset-btn {
+      background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--text-muted); padding: 7px 14px; border-radius: 8px;
+      font-size: 12px; cursor: pointer; font-weight: 500; transition: all 0.2s;
+    }
+    .reset-btn:hover { border-color: var(--red); color: var(--red); background: #fee2e2; }
+
+    /* ── KPI ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .kpi-card.accent {
+      background: linear-gradient(135deg, #fff 0%, var(--accent-light) 100%);
+      border-color: #bfdbfe;
+    }
+    .kpi-card.green {
+      background: linear-gradient(135deg, #fff 0%, var(--green-light) 100%);
+      border-color: #86efac;
+    }
+    .kpi-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; font-weight: 600; }
+    .kpi-value { font-size: 28px; font-weight: 800; line-height: 1; color: var(--text); }
+    .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Charts ── */
+    .charts-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .chart-card.wide { grid-column: 1/-1; }
+    .chart-card h3 {
+      font-size: 11px; font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .07em;
+      margin-bottom: 16px;
+    }
+    .chart-wrap { position: relative; height: 220px; }
+    .chart-wrap.tall { height: 270px; }
+
+    /* ── Table ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+    .table-card h3 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 16px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+    .data-table th { text-align: left; padding: 8px 12px; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; border-bottom: 2px solid var(--border); background: var(--surface2); }
+    .data-table th:first-child { border-radius: 8px 0 0 0; }
+    .data-table th:last-child  { border-radius: 0 8px 0 0; }
+    .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--surface3); vertical-align: middle; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface2); }
+    .text-cell { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dir-out { display:inline-block; padding:2px 9px; border-radius:10px; font-size:10px; font-weight:700; background: var(--accent-light); color: var(--accent); border: 1px solid #bfdbfe; }
+    .dir-in  { display:inline-block; padding:2px 9px; border-radius:10px; font-size:10px; font-weight:700; background: var(--green-light); color: var(--green); border: 1px solid #86efac; }
+    .media-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+    .media-TEXT    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+    .media-IMAGE   { background:#ede9fe; color:#7c3aed; border:1px solid #ddd6fe; }
+    .media-VIDEO   { background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; }
+    .media-ARTICLE { background:#fef3c7; color:#d97706; border:1px solid #fde68a; }
+    .media-DOCUMENT{ background:#dcfce7; color:#16a34a; border:1px solid #86efac; }
+    .media-POLL    { background:#cffafe; color:#0891b2; border:1px solid #a5f3fc; }
+    .eng-score { font-weight:800; color: var(--accent); }
+    .stat-inline { display:flex; gap:6px; font-size:12px; flex-wrap:wrap; }
+
+    /* ── AI Section ── */
+    .ai-section {
+      background: linear-gradient(135deg, #fff 0%, var(--accent-light) 100%);
+      border: 1px solid #bfdbfe;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow);
+    }
+    .ai-section h3 { font-size: 15px; font-weight: 800; margin-bottom: 6px; color: var(--text); }
+    .ai-section > p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+    .ai-input-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .ai-key-input {
+      flex:1; min-width:240px;
+      background: var(--surface); border: 1px solid var(--border2);
+      color: var(--text); padding: 10px 14px; border-radius: 8px; font-size: 13px;
+      box-shadow: var(--shadow-sm); transition: border-color 0.2s;
+    }
+    .ai-key-input:focus { outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10,102,194,0.12); }
+    .ai-run-btn {
+      background: linear-gradient(135deg, #0a66c2, #0856a8);
+      color: #fff; border: none; padding: 10px 22px;
+      border-radius: 8px; font-size: 13px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; gap: 7px; white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(10,102,194,0.35); transition: all 0.2s;
+    }
+    .ai-run-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(10,102,194,0.4); }
+    .ai-run-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .ai-result {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+      font-size: 13px; line-height: 1.85;
+      color: var(--text); display: none; white-space: pre-wrap;
+      box-shadow: var(--shadow-sm);
+    }
+    .ai-result.active { display: block; }
+    .ai-result h4 { font-size: 14px; font-weight: 800; color: var(--accent); margin: 16px 0 6px; }
+    .ai-result h4:first-child { margin-top: 0; }
+
+    /* ── Empty panel ── */
+    .empty-panel { text-align: center; padding: 64px 20px; }
+    .empty-panel .icon { font-size: 52px; margin-bottom: 14px; }
+    .empty-panel h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .empty-panel p { font-size: 13px; color: var(--text-muted); }
+
+    @media(max-width:768px) {
+      .upload-grid, .charts-grid { grid-template-columns: 1fr; }
+      .charts-grid .chart-card.wide { grid-column: 1; }
+      .kpi-grid { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── WATER DROPS BACKGROUND ── -->
+<div class="drops-bg" id="drops-bg"></div>
+
+<!-- ── HEADER ── -->
+<div class="header">
+  <div class="header-logo">in</div>
+  <h1>LinkedIn 분석기</h1>
+  <div class="file-status">
+    <div class="file-chip" id="chip-invites"><span class="dot"></span>네트워킹 데이터</div>
+    <div class="file-chip" id="chip-shares"><span class="dot"></span>포스팅 데이터</div>
+  </div>
+</div>
+
+<!-- ── TABS ── -->
+<div class="tabs-bar">
+  <button class="tab-btn active"  id="tab-upload"  onclick="switchTab('upload')">📁 파일 업로드</button>
+  <button class="tab-btn disabled" id="tab-network" onclick="switchTab('network')">🤝 네트워킹 활동 <span class="tab-badge" id="badge-network">-</span></button>
+  <button class="tab-btn disabled" id="tab-posts"   onclick="switchTab('posts')">📊 포스팅 성과 <span class="tab-badge" id="badge-posts">-</span></button>
+</div>
+
+<div class="container">
+
+  <!-- ═══ TAB: UPLOAD ═══ -->
+  <div class="tab-panel active" id="panel-upload">
+    <div style="max-width:860px;margin:0 auto">
+      <div class="upload-intro" style="margin-bottom:20px">
+        <p>파일을 각 슬롯에 올려주세요. 두 파일 모두 업로드하면 네트워킹과 포스팅 성과를 함께 분석할 수 있어요.</p>
+      </div>
+      <div class="upload-grid">
+        <!-- Invitations slot -->
+        <div class="upload-slot" id="slot-invites"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="onDrop(event,'invites')">
+          <div id="slot-invites-empty">
+            <div class="slot-icon">🤝</div>
+            <div class="slot-title">네트워킹 데이터</div>
+            <div class="slot-desc"><strong>Invitations.csv</strong> 또는<br>LinkedIn ZIP 파일을 올려주세요</div>
+            <button class="slot-btn" onclick="triggerFile('invites')">파일 선택</button>
+          </div>
+          <div id="slot-invites-loaded" style="display:none">
+            <button class="slot-remove" onclick="clearSlot('invites')">✕</button>
+            <div class="slot-icon">✅</div>
+            <div class="slot-loaded-info" id="info-invites"></div>
+            <div class="slot-loaded-sub" id="sub-invites"></div>
+          </div>
+        </div>
+        <!-- Shares slot -->
+        <div class="upload-slot" id="slot-shares"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="onDrop(event,'shares')">
+          <div id="slot-shares-empty">
+            <div class="slot-icon">📝</div>
+            <div class="slot-title">포스팅 데이터</div>
+            <div class="slot-desc"><strong>Shares.csv</strong> 또는<br>LinkedIn ZIP 파일을 올려주세요</div>
+            <button class="slot-btn" onclick="triggerFile('shares')">파일 선택</button>
+          </div>
+          <div id="slot-shares-loaded" style="display:none">
+            <button class="slot-remove" onclick="clearSlot('shares')">✕</button>
+            <div class="slot-icon">✅</div>
+            <div class="slot-loaded-info" id="info-shares"></div>
+            <div class="slot-loaded-sub" id="sub-shares"></div>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="file-invites" accept=".zip,.csv" style="display:none" onchange="handleFileInput(event,'invites')" />
+      <input type="file" id="file-shares"  accept=".zip,.csv" style="display:none" onchange="handleFileInput(event,'shares')" />
+
+      <details class="guide-box">
+        <summary>📥 LinkedIn 데이터 내보내기 방법 (클릭하여 보기)</summary>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div>LinkedIn → 우측 상단 프로필 클릭 → <b>설정 및 개인 정보(Settings & Privacy)</b></div></div>
+          <div class="step"><div class="step-num">2</div><div>왼쪽 메뉴 <b>데이터 개인 정보 보호</b> → <b>내 데이터의 사본 받기</b></div></div>
+          <div class="step"><div class="step-num">3</div><div>항목 선택에서 <code>Invitations</code> + <code>Shares</code> 체크 → <b>아카이브 요청</b></div></div>
+          <div class="step"><div class="step-num">4</div><div>이메일로 ZIP 파일 수신 (보통 10분~24시간) → ZIP 또는 개별 CSV 업로드</div></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: NETWORK ═══ -->
+  <div class="tab-panel" id="panel-network">
+    <div class="section-header">
+      <h2>🤝 네트워킹 활동 분석</h2>
+      <button class="reset-btn" onclick="clearSlot('invites');switchTab('upload')">↺ 파일 변경</button>
+    </div>
+    <div class="kpi-grid" id="net-kpi"></div>
+    <div class="charts-grid">
+      <div class="chart-card wide"><h3>월별 연결 요청 추이</h3><div class="chart-wrap tall"><canvas id="netTrendChart"></canvas></div></div>
+      <div class="chart-card"><h3>발신 vs 수신 비율</h3><div class="chart-wrap"><canvas id="netDirChart"></canvas></div></div>
+      <div class="chart-card"><h3>요일별 네트워킹 활동</h3><div class="chart-wrap"><canvas id="netDowChart"></canvas></div></div>
+      <div class="chart-card wide"><h3>누적 연결 성장 추이</h3><div class="chart-wrap"><canvas id="netGrowthChart"></canvas></div></div>
+    </div>
+    <div class="table-card">
+      <h3>💬 메시지 포함 연결 요청 (최근 10건)</h3>
+      <div id="net-msg-table"></div>
+    </div>
+    <div class="ai-section">
+      <h3>🤖 AI 네트워킹 인사이트</h3>
+      <p>내 네트워킹 패턴을 분석해 전략적 인사이트와 개선 방향을 제안합니다.</p>
+      <div class="ai-input-row">
+        <input type="password" class="ai-key-input" id="net-ai-key" placeholder="Anthropic API 키 (sk-ant-...)" />
+        <button class="ai-run-btn" id="net-ai-btn" onclick="runNetAI()">✨ AI 분석 시작</button>
+      </div>
+      <div class="ai-result" id="net-ai-result"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: POSTS ═══ -->
+  <div class="tab-panel" id="panel-posts">
+    <div class="section-header">
+      <h2>📊 포스팅 성과 분석</h2>
+      <button class="reset-btn" onclick="clearSlot('shares');switchTab('upload')">↺ 파일 변경</button>
+    </div>
+    <div class="kpi-grid" id="post-kpi"></div>
+    <div class="charts-grid">
+      <div class="chart-card wide"><h3>월별 게시물 성과 추이</h3><div class="chart-wrap tall"><canvas id="postTrendChart"></canvas></div></div>
+      <div class="chart-card"><h3>요일별 평균 참여도</h3><div class="chart-wrap"><canvas id="postDowChart"></canvas></div></div>
+      <div class="chart-card"><h3>콘텐츠 유형별 성과</h3><div class="chart-wrap"><canvas id="postTypeChart"></canvas></div></div>
+      <div class="chart-card"><h3>게시물 길이별 참여도</h3><div class="chart-wrap"><canvas id="postLenChart"></canvas></div></div>
+      <div class="chart-card"><h3>참여 유형 분포</h3><div class="chart-wrap"><canvas id="postEngChart"></canvas></div></div>
+    </div>
+    <div class="table-card">
+      <h3>🏆 참여도 TOP 10 게시물</h3>
+      <div id="post-top-table"></div>
+    </div>
+    <div class="ai-section">
+      <h3>🤖 AI 포스팅 인사이트</h3>
+      <p>게시물 데이터를 분석해 성과 패턴, 최적 전략, 다음 포스팅 아이디어를 제안합니다.</p>
+      <div class="ai-input-row">
+        <input type="password" class="ai-key-input" id="post-ai-key" placeholder="Anthropic API 키 (sk-ant-...)" />
+        <button class="ai-run-btn" id="post-ai-btn" onclick="runPostAI()">✨ AI 분석 시작</button>
+      </div>
+      <div class="ai-result" id="post-ai-result"></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Water drops generator ────────────────────
+(function() {
+  const bg = document.getElementById('drops-bg');
+  const drops = [
+    { w:80,  h:100, l:5,   t:10,  dur:8,  del:0,   op:0.045, rot:'-15deg' },
+    { w:40,  h:52,  l:15,  t:55,  dur:11, del:2,   op:0.035, rot:'20deg'  },
+    { w:120, h:150, l:25,  t:20,  dur:14, del:1,   op:0.030, rot:'-8deg'  },
+    { w:60,  h:76,  l:38,  t:70,  dur:9,  del:3,   op:0.050, rot:'30deg'  },
+    { w:90,  h:115, l:55,  t:5,   dur:12, del:0.5, op:0.038, rot:'-22deg' },
+    { w:35,  h:44,  l:65,  t:45,  dur:7,  del:4,   op:0.055, rot:'10deg'  },
+    { w:100, h:128, l:72,  t:75,  dur:15, del:2.5, op:0.028, rot:'-5deg'  },
+    { w:55,  h:70,  l:82,  t:25,  dur:10, del:1.5, op:0.042, rot:'25deg'  },
+    { w:70,  h:90,  l:88,  t:60,  dur:13, del:0,   op:0.033, rot:'-18deg' },
+    { w:45,  h:57,  l:92,  t:10,  dur:8,  del:3.5, op:0.048, rot:'15deg'  },
+    { w:30,  h:38,  l:48,  t:35,  dur:6,  del:1,   op:0.040, rot:'-30deg' },
+    { w:110, h:140, l:10,  t:80,  dur:16, del:2,   op:0.025, rot:'5deg'   },
+    { w:50,  h:64,  l:30,  t:90,  dur:9,  del:4.5, op:0.044, rot:'-12deg' },
+    { w:75,  h:96,  l:60,  t:88,  dur:11, del:0.8, op:0.036, rot:'28deg'  },
+    { w:42,  h:54,  l:78,  t:92,  dur:8,  del:2.2, op:0.050, rot:'-20deg' },
+  ];
+  drops.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'drop';
+    el.style.cssText = `
+      width:${d.w}px; height:${d.h}px;
+      left:${d.l}%; top:${d.t}%;
+      animation-duration:${d.dur}s;
+      animation-delay:-${d.del}s;
+      --op:${d.op}; --rot:${d.rot};
+      opacity:${d.op};
+    `;
+    bg.appendChild(el);
+  });
+})();
+
+// ── State & Charts ───────────────────────────
+const state = { invites: null, shares: null };
+const charts = {};
+
+// ── Tab switching ────────────────────────────
+function switchTab(name) {
+  ['upload','network','posts'].forEach(t => {
+    document.getElementById('tab-'+t)?.classList.remove('active');
+    document.getElementById('panel-'+t)?.classList.remove('active');
+  });
+  const btn = document.getElementById('tab-'+name);
+  if (btn && !btn.classList.contains('disabled')) {
+    btn.classList.add('active');
+    document.getElementById('panel-'+name).classList.add('active');
+  } else {
+    document.getElementById('tab-upload').classList.add('active');
+    document.getElementById('panel-upload').classList.add('active');
+  }
+}
+function enableTab(name, count) {
+  const btn = document.getElementById('tab-'+name);
+  btn.classList.remove('disabled');
+  document.getElementById('badge-'+name).textContent = count.toLocaleString()+'건';
+}
+
+// ── File handling ────────────────────────────
+function triggerFile(slot) { document.getElementById('file-'+slot).click(); }
+function onDrop(event, slot) {
+  event.preventDefault();
+  document.getElementById('slot-'+slot).classList.remove('drag-over');
+  const f = event.dataTransfer.files[0];
+  if (f) processFile(f, slot);
+}
+function handleFileInput(event, slot) {
+  const f = event.target.files[0];
+  if (f) processFile(f, slot);
+  event.target.value = '';
+}
+async function processFile(file, slot) {
+  try {
+    let csvText;
+    if (file.name.toLowerCase().endsWith('.zip')) {
+      const zip = await JSZip.loadAsync(file);
+      const target = slot === 'invites'
+        ? Object.values(zip.files).find(f => /invitations?\.csv$/i.test(f.name))
+        : Object.values(zip.files).find(f => /shares?\.csv$/i.test(f.name) || /posts?\.csv$/i.test(f.name));
+      if (!target) throw new Error(`ZIP에서 ${slot==='invites'?'Invitations':'Shares'}.csv를 찾을 수 없습니다.`);
+      csvText = await target.async('string');
+    } else {
+      csvText = await file.text();
+    }
+    if (slot === 'invites') {
+      state.invites = parseInvitations(csvText);
+      if (!state.invites.length) throw new Error('유효한 데이터가 없습니다.');
+      setSlotLoaded('invites', `${state.invites.length}개 연결 요청 로드됨`, getDateRange(state.invites.map(r=>r.date)));
+      enableTab('network', state.invites.length);
+      renderNetworkDashboard();
+      switchTab('network');
+    } else {
+      state.shares = parsePosts(csvText);
+      if (!state.shares.length) throw new Error('유효한 데이터가 없습니다.');
+      setSlotLoaded('shares', `${state.shares.length}개 게시물 로드됨`, getDateRange(state.shares.map(r=>r.date)));
+      enableTab('posts', state.shares.length);
+      renderPostsDashboard();
+      switchTab('posts');
+    }
+  } catch(err) { alert('⚠️ ' + err.message); }
+}
+function setSlotLoaded(slot, info, sub) {
+  document.getElementById('slot-'+slot+'-empty').style.display = 'none';
+  document.getElementById('slot-'+slot+'-loaded').style.display = 'block';
+  document.getElementById('slot-'+slot).classList.add('loaded');
+  document.getElementById('info-'+slot).textContent = info;
+  document.getElementById('sub-'+slot).textContent = sub;
+  document.getElementById(slot==='invites'?'chip-invites':'chip-shares').classList.add('loaded');
+}
+function clearSlot(slot) {
+  state[slot==='invites'?'invites':'shares'] = null;
+  document.getElementById('slot-'+slot+'-empty').style.display = 'block';
+  document.getElementById('slot-'+slot+'-loaded').style.display = 'none';
+  document.getElementById('slot-'+slot).classList.remove('loaded');
+  document.getElementById(slot==='invites'?'chip-invites':'chip-shares').classList.remove('loaded');
+  const tabName = slot==='invites'?'network':'posts';
+  document.getElementById('tab-'+tabName).classList.add('disabled');
+  document.getElementById('badge-'+tabName).textContent = '-';
+}
+function getDateRange(dates) {
+  const valid = dates.filter(Boolean).sort((a,b)=>a-b);
+  if (!valid.length) return '';
+  return `${valid[0].toLocaleDateString('ko-KR')} ~ ${valid[valid.length-1].toLocaleDateString('ko-KR')}`;
+}
+
+// ── Parse ────────────────────────────────────
+function parseInvitations(text) {
+  const { data } = Papa.parse(text, { header:true, skipEmptyLines:true });
+  return data.map(row => {
+    const date = new Date(row['Sent At']||row['SentAt']||'');
+    return { from: row['From']||'', to: row['To']||'', date: isNaN(date)?null:date, message:(row['Message']||'').trim(), direction:(row['Direction']||'').toUpperCase() };
+  }).filter(r => r.date||r.from);
+}
+function parsePosts(text) {
+  const { data } = Papa.parse(text, { header:true, skipEmptyLines:true });
+  const col = (row,...names) => { for(const n of names){const v=row[n]??row[n.toLowerCase()]??row[n.toUpperCase()]; if(v!==undefined)return v;} return ''; };
+  return data.map(row => {
+    const date = new Date(col(row,'Date','date','Timestamp'));
+    const postText = col(row,'ShareCommentary','shareCommentary','Commentary','Text');
+    const media = normalizeMedia((col(row,'ShareMediaCategory','shareMediaCategory','MediaType','Type')||'TEXT').toUpperCase());
+    const likes    = parseInt(col(row,'LikeCount','likeCount','Likes','Reactions'))||0;
+    const comments = parseInt(col(row,'CommentCount','commentCount','Comments'))||0;
+    const reposts  = parseInt(col(row,'RepostCount','repostCount','Reposts','ShareCount','Shares'))||0;
+    return { date:isNaN(date)?null:date, text:String(postText), media, likes, comments, reposts, score:likes+comments*3+reposts*5, length:String(postText).length };
+  }).filter(r=>r.text||r.date);
+}
+function normalizeMedia(m) {
+  if(!m||m==='NONE'||m===''||m==='TEXT') return 'TEXT';
+  if(m.includes('IMAGE')||m==='PHOTO') return 'IMAGE';
+  if(m.includes('VIDEO')) return 'VIDEO';
+  if(m.includes('ARTICLE')||m==='URL') return 'ARTICLE';
+  if(m.includes('DOCUMENT')) return 'DOCUMENT';
+  if(m.includes('POLL')) return 'POLL';
+  return m;
+}
+
+// ── Network Dashboard ────────────────────────
+function renderNetworkDashboard() {
+  const inv = state.invites;
+  const out = inv.filter(r=>r.direction==='OUTGOING');
+  const inc = inv.filter(r=>r.direction==='INCOMING');
+  const withMsg = inv.filter(r=>r.message.length>0);
+  document.getElementById('net-kpi').innerHTML = `
+    <div class="kpi-card accent"><div class="kpi-label">총 연결 요청</div><div class="kpi-value">${inv.length}</div><div class="kpi-sub">발신+수신 합계</div></div>
+    <div class="kpi-card"><div class="kpi-label">내가 보낸 요청</div><div class="kpi-value" style="color:var(--accent)">${out.length}</div><div class="kpi-sub">${inv.length?(out.length/inv.length*100).toFixed(0):0}% 비율</div></div>
+    <div class="kpi-card green"><div class="kpi-label">받은 요청</div><div class="kpi-value" style="color:var(--green)">${inc.length}</div><div class="kpi-sub">${inv.length?(inc.length/inv.length*100).toFixed(0):0}% 비율</div></div>
+    <div class="kpi-card"><div class="kpi-label">메시지 포함</div><div class="kpi-value" style="color:var(--amber)">${withMsg.length}</div><div class="kpi-sub">${inv.length?(withMsg.length/inv.length*100).toFixed(0):0}% 비율</div></div>
+  `;
+  // Monthly
+  const monthly = {};
+  inv.forEach(r=>{if(!r.date)return;const k=`${r.date.getFullYear()}-${String(r.date.getMonth()+1).padStart(2,'0')}`;if(!monthly[k])monthly[k]={out:0,inc:0};r.direction==='OUTGOING'?monthly[k].out++:monthly[k].inc++;});
+  const mL = Object.keys(monthly).sort();
+  destroyChart('netTrendChart');
+  charts.netTrend = new Chart(document.getElementById('netTrendChart'),{type:'bar',data:{labels:mL,datasets:[
+    {label:'내가 보낸 요청',data:mL.map(k=>monthly[k].out),backgroundColor:'rgba(10,102,194,0.65)',borderRadius:4,stack:'s'},
+    {label:'받은 요청',data:mL.map(k=>monthly[k].inc),backgroundColor:'rgba(22,163,74,0.55)',borderRadius:4,stack:'s'},
+  ]},options:lightChartOpts({stacked:true})});
+  // Doughnut
+  destroyChart('netDirChart');
+  charts.netDir = new Chart(document.getElementById('netDirChart'),{type:'doughnut',data:{labels:[`발신 (${out.length})`,`수신 (${inc.length})`],datasets:[{data:[out.length,inc.length],backgroundColor:['#0a66c2','#16a34a'],borderColor:'#ffffff',borderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{size:11},padding:14}}}}});
+  // DOW
+  const days=['일','월','화','수','목','금','토'];
+  const dow=Array(7).fill(0); inv.forEach(r=>{if(r.date)dow[r.date.getDay()]++;});
+  const maxDow=dow.indexOf(Math.max(...dow));
+  destroyChart('netDowChart');
+  charts.netDow = new Chart(document.getElementById('netDowChart'),{type:'bar',data:{labels:days,datasets:[{label:'요청 수',data:dow,backgroundColor:dow.map((_,i)=>i===maxDow?'#0a66c2':'rgba(10,102,194,0.25)'),borderRadius:7}]},options:lightChartOpts()});
+  // Growth
+  const sorted=inv.filter(r=>r.date).sort((a,b)=>a.date-b.date);
+  const gLabels=[],gData=[];
+  sorted.forEach((r,i)=>{const k=r.date.toLocaleDateString('ko-KR');if(!gLabels.includes(k)){gLabels.push(k);gData.push(i+1);}else gData[gData.length-1]=i+1;});
+  const step=Math.ceil(gLabels.length/60);
+  destroyChart('netGrowthChart');
+  charts.netGrowth = new Chart(document.getElementById('netGrowthChart'),{type:'line',data:{labels:gLabels.filter((_,i)=>i%step===0),datasets:[{label:'누적 연결',data:gData.filter((_,i)=>i%step===0),borderColor:'#0a66c2',backgroundColor:'rgba(10,102,194,0.08)',fill:true,borderWidth:2.5,pointRadius:0,tension:0.35}]},options:lightChartOpts()});
+  // Msg table
+  const msgs=inv.filter(r=>r.message).sort((a,b)=>(b.date||0)-(a.date||0)).slice(0,10);
+  document.getElementById('net-msg-table').innerHTML=msgs.length===0
+    ?'<p style="color:var(--text-muted);font-size:13px;padding:12px 0">메시지가 포함된 연결 요청이 없습니다.</p>'
+    :`<table class="data-table"><thead><tr><th>날짜</th><th>방향</th><th>상대방</th><th>메시지</th></tr></thead><tbody>${msgs.map(r=>`<tr><td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${r.date?r.date.toLocaleDateString('ko-KR'):'-'}</td><td>${r.direction==='OUTGOING'?'<span class="dir-out">발신</span>':'<span class="dir-in">수신</span>'}</td><td style="font-size:13px">${esc(r.direction==='OUTGOING'?r.to:r.from)}</td><td class="text-cell" title="${esc(r.message)}">${esc(r.message)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// ── Posts Dashboard ──────────────────────────
+function renderPostsDashboard() {
+  const posts=state.shares, total=posts.length;
+  const tL=posts.reduce((s,p)=>s+p.likes,0), tC=posts.reduce((s,p)=>s+p.comments,0), tR=posts.reduce((s,p)=>s+p.reposts,0), tE=tL+tC+tR;
+  document.getElementById('post-kpi').innerHTML=`
+    <div class="kpi-card accent"><div class="kpi-label">총 게시물</div><div class="kpi-value">${total}</div><div class="kpi-sub">전체 포스팅</div></div>
+    <div class="kpi-card"><div class="kpi-label">총 참여</div><div class="kpi-value">${tE.toLocaleString()}</div><div class="kpi-sub">좋아요+댓글+리포스트</div></div>
+    <div class="kpi-card"><div class="kpi-label">게시물당 평균</div><div class="kpi-value">${total?(tE/total).toFixed(1):0}</div><div class="kpi-sub">평균 참여 수</div></div>
+    <div class="kpi-card"><div class="kpi-label">좋아요</div><div class="kpi-value" style="color:var(--accent)">${tL.toLocaleString()}</div><div class="kpi-sub">평균 ${total?(tL/total).toFixed(1):0}/건</div></div>
+    <div class="kpi-card"><div class="kpi-label">댓글</div><div class="kpi-value" style="color:var(--purple)">${tC.toLocaleString()}</div><div class="kpi-sub">평균 ${total?(tC/total).toFixed(1):0}/건</div></div>
+    <div class="kpi-card green"><div class="kpi-label">최고 참여 점수</div><div class="kpi-value" style="color:var(--green)">${total?Math.max(...posts.map(p=>p.score)):0}</div><div class="kpi-sub">단일 게시물 최고</div></div>
+  `;
+  const monthly={};
+  posts.forEach(p=>{if(!p.date)return;const k=`${p.date.getFullYear()}-${String(p.date.getMonth()+1).padStart(2,'0')}`;if(!monthly[k])monthly[k]={count:0,score:0};monthly[k].count++;monthly[k].score+=p.score;});
+  const mL=Object.keys(monthly).sort();
+  destroyChart('postTrendChart');
+  charts.postTrend=new Chart(document.getElementById('postTrendChart'),{type:'bar',data:{labels:mL,datasets:[
+    {label:'게시물 수',data:mL.map(k=>monthly[k].count),backgroundColor:'rgba(10,102,194,0.25)',borderColor:'#0a66c2',borderWidth:2,yAxisID:'y1',order:2},
+    {label:'평균 참여 점수',data:mL.map(k=>+(monthly[k].score/monthly[k].count).toFixed(1)),type:'line',borderColor:'#d97706',backgroundColor:'rgba(217,119,6,0.07)',fill:true,borderWidth:2.5,pointRadius:4,yAxisID:'y2',order:1},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#64748b',font:{size:11}}}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}},y1:{ticks:{color:'#0a66c2',font:{size:10}},grid:{color:'#f1f5f9'},position:'left'},y2:{ticks:{color:'#d97706',font:{size:10}},grid:{display:false},position:'right'}}}});
+  const days=['일','월','화','수','목','금','토'];
+  const dow=Array(7).fill(null).map(()=>({sum:0,count:0}));
+  posts.forEach(p=>{if(p.date){const d=p.date.getDay();dow[d].sum+=p.score;dow[d].count++;}});
+  const dowAvg=dow.map(d=>d.count?+(d.sum/d.count).toFixed(1):0);
+  const maxDow=dowAvg.indexOf(Math.max(...dowAvg));
+  destroyChart('postDowChart');
+  charts.postDow=new Chart(document.getElementById('postDowChart'),{type:'bar',data:{labels:days,datasets:[{label:'평균 참여 점수',data:dowAvg,backgroundColor:dowAvg.map((_,i)=>i===maxDow?'#0a66c2':'rgba(10,102,194,0.22)'),borderRadius:7}]},options:lightChartOpts()});
+  const typeMap={};
+  posts.forEach(p=>{if(!typeMap[p.media])typeMap[p.media]={sum:0,count:0};typeMap[p.media].sum+=p.score;typeMap[p.media].count++;});
+  const typeLabels=Object.keys(typeMap).sort((a,b)=>typeMap[b].sum/typeMap[b].count-typeMap[a].sum/typeMap[a].count);
+  const typeColors={TEXT:'#94a3b8',IMAGE:'#7c3aed',VIDEO:'#dc2626',ARTICLE:'#d97706',DOCUMENT:'#16a34a',POLL:'#0891b2'};
+  destroyChart('postTypeChart');
+  charts.postType=new Chart(document.getElementById('postTypeChart'),{type:'bar',data:{labels:typeLabels,datasets:[{label:'평균 참여',data:typeLabels.map(k=>+(typeMap[k].sum/typeMap[k].count).toFixed(1)),backgroundColor:typeLabels.map(l=>typeColors[l]||'#0a66c2'),borderRadius:7}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}},y:{ticks:{color:'#1e293b',font:{size:11}},grid:{color:'#f1f5f9'}}}}});
+  const buckets=[{label:'~100자',min:0,max:100},{label:'101~300',min:101,max:300},{label:'301~700',min:301,max:700},{label:'701~1200',min:701,max:1200},{label:'1200자+',min:1201,max:Infinity}];
+  const bData=buckets.map(b=>{const ps=posts.filter(p=>p.length>=b.min&&p.length<=b.max);return ps.length?+(ps.reduce((s,p)=>s+p.score,0)/ps.length).toFixed(1):0;});
+  const maxLen=bData.indexOf(Math.max(...bData));
+  destroyChart('postLenChart');
+  charts.postLen=new Chart(document.getElementById('postLenChart'),{type:'bar',data:{labels:buckets.map(b=>b.label),datasets:[{label:'평균 참여 점수',data:bData,backgroundColor:bData.map((_,i)=>i===maxLen?'#d97706':'rgba(217,119,6,0.25)'),borderRadius:7}]},options:lightChartOpts()});
+  destroyChart('postEngChart');
+  charts.postEng=new Chart(document.getElementById('postEngChart'),{type:'doughnut',data:{labels:[`좋아요 (${tL})`,`댓글 (${tC})`,`리포스트 (${tR})`],datasets:[{data:[tL,tC,tR],backgroundColor:['#0a66c2','#7c3aed','#16a34a'],borderColor:'#ffffff',borderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{size:11},padding:12}}}}});
+  const top=[...posts].sort((a,b)=>b.score-a.score).slice(0,10);
+  document.getElementById('post-top-table').innerHTML=`<table class="data-table"><thead><tr><th>#</th><th>날짜</th><th>내용</th><th>유형</th><th>반응</th><th>점수</th></tr></thead><tbody>${top.map((p,i)=>`<tr><td style="color:var(--text-dim);font-size:12px">${i+1}</td><td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${p.date?p.date.toLocaleDateString('ko-KR'):'-'}</td><td class="text-cell" title="${esc(p.text)}">${esc(p.text)||'(내용없음)'}</td><td><span class="media-badge media-${p.media}">${p.media}</span></td><td><div class="stat-inline"><span style="color:var(--accent);font-size:12px">👍${p.likes}</span><span style="color:var(--purple);font-size:12px">💬${p.comments}</span><span style="color:var(--green);font-size:12px">🔁${p.reposts}</span></div></td><td class="eng-score">${p.score}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// ── AI ───────────────────────────────────────
+async function runNetAI() {
+  const key=document.getElementById('net-ai-key').value.trim();
+  if(!key){alert('API 키를 입력해주세요.');return;}
+  const btn=document.getElementById('net-ai-btn'), res=document.getElementById('net-ai-result');
+  btn.disabled=true; btn.textContent='⏳ 분석 중...';
+  res.classList.add('active'); res.innerHTML='<span style="color:var(--text-muted)">분석 중입니다...</span>';
+  try {
+    const inv=state.invites, out=inv.filter(r=>r.direction==='OUTGOING').length, inc=inv.filter(r=>r.direction==='INCOMING').length, withMsg=inv.filter(r=>r.message).length;
+    const days=['일','월','화','수','목','금','토'], dow=Array(7).fill(0); inv.forEach(r=>{if(r.date)dow[r.date.getDay()]++;});
+    const bestDay=days[dow.indexOf(Math.max(...dow))];
+    const recent5=inv.filter(r=>r.message).slice(0,5).map(r=>`- [${r.direction}] ${r.direction==='OUTGOING'?r.to:r.from}: "${r.message.slice(0,80)}"`).join('\n');
+    const prompt=`당신은 LinkedIn 네트워킹 전략 전문가입니다. 아래 데이터를 분석해 한국어로 인사이트를 제공하세요.\n\n## 데이터\n- 총 연결 요청: ${inv.length}건 (발신 ${out}, 수신 ${inc})\n- 메시지 포함 요청: ${withMsg}건\n- 가장 활동적인 요일: ${bestDay}요일\n- 데이터 기간: ${getDateRange(inv.map(r=>r.date))}\n\n## 메시지 샘플\n${recent5||'없음'}\n\n---\n**[1. 네트워킹 패턴 분석]** 활동 패턴의 특징 (3개 포인트)\n**[2. 네트워크 성장 인사이트]** 수신/발신 비율, 성장 속도 평가\n**[3. 개선 제안]** 즉시 실행 가능한 방법 (3개)\n**[4. 연결 요청 메시지 전략]** 메시지 작성 팁과 예시`;
+    res.innerHTML=formatAI(await callClaude(key,prompt));
+  } catch(e){res.innerHTML=`<span style="color:var(--red)">⚠️ ${esc(e.message)}</span>`;}
+  finally{btn.disabled=false;btn.innerHTML='✨ AI 분석 시작';}
+}
+async function runPostAI() {
+  const key=document.getElementById('post-ai-key').value.trim();
+  if(!key){alert('API 키를 입력해주세요.');return;}
+  const btn=document.getElementById('post-ai-btn'), res=document.getElementById('post-ai-result');
+  btn.disabled=true; btn.textContent='⏳ 분석 중...';
+  res.classList.add('active'); res.innerHTML='<span style="color:var(--text-muted)">분석 중입니다...</span>';
+  try {
+    const posts=state.shares, total=posts.length;
+    const tL=posts.reduce((s,p)=>s+p.likes,0), tC=posts.reduce((s,p)=>s+p.comments,0), tR=posts.reduce((s,p)=>s+p.reposts,0);
+    const top5=[...posts].sort((a,b)=>b.score-a.score).slice(0,5);
+    const typeMap={}; posts.forEach(p=>{if(!typeMap[p.media])typeMap[p.media]={sum:0,count:0};typeMap[p.media].sum+=p.score;typeMap[p.media].count++;});
+    const bestType=Object.entries(typeMap).sort((a,b)=>b[1].sum/b[1].count-a[1].sum/a[1].count)[0];
+    const days=['일','월','화','수','목','금','토'], dow=Array(7).fill(null).map(()=>({sum:0,count:0}));
+    posts.forEach(p=>{if(p.date){const d=p.date.getDay();dow[d].sum+=p.score;dow[d].count++;}});
+    const bestDay=days[dow.reduce((bi,d,i)=>(d.count&&d.sum/d.count>(dow[bi].count?dow[bi].sum/dow[bi].count:0))?i:bi,0)];
+    const prompt=`당신은 LinkedIn 콘텐츠 전략 전문가입니다.\n\n## 데이터\n- 총 게시물: ${total}개 | 좋아요:${tL} 댓글:${tC} 리포스트:${tR}\n- 게시물당 평균 참여: ${total?((tL+tC+tR)/total).toFixed(1):0}\n- 최고 성과 요일: ${bestDay}요일\n- 최고 성과 유형: ${bestType?`${bestType[0]} (평균 ${(bestType[1].sum/bestType[1].count).toFixed(1)}점)`:'-'}\n\n## TOP 5 게시물\n${top5.map((p,i)=>`${i+1}. [${p.date?p.date.toLocaleDateString('ko-KR'):'-'}] ${p.media} 점수:${p.score}\n   "${p.text.slice(0,150)}"`).join('\n')}\n\n---\n**[1. 성과 패턴 분석]** 높은 참여를 만드는 패턴 (3-4개)\n**[2. 콘텐츠 전략 인사이트]** 유형·길이·스타일 (3-4개)\n**[3. 최적화 제안]** 즉시 적용 가능한 방법 (3-4개)\n**[4. 다음 포스팅 아이디어]** 성과 패턴 기반 주제 제안 2-3개`;
+    res.innerHTML=formatAI(await callClaude(key,prompt));
+  } catch(e){res.innerHTML=`<span style="color:var(--red)">⚠️ ${esc(e.message)}</span>`;}
+  finally{btn.disabled=false;btn.innerHTML='✨ AI 분석 시작';}
+}
+
+// ── Utilities ────────────────────────────────
+async function callClaude(key, prompt) {
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,messages:[{role:'user',content:prompt}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||`API 오류 (${r.status})`);}
+  return (await r.json()).content[0].text;
+}
+function formatAI(text) {
+  return text.replace(/\*\*\[(.+?)\]\*\*/g,'<h4>$1</h4>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+}
+function lightChartOpts({stacked=false}={}) {
+  return { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:stacked, labels:{color:'#64748b',font:{size:11}} } }, scales:{ x:{stacked,ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}}, y:{stacked,ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}} } };
+}
+function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
