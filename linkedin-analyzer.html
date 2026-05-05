@@ -370,7 +370,6 @@
   <h1>LinkedIn 분석기</h1>
   <div class="file-status">
     <div class="file-chip" id="chip-invites"><span class="dot"></span>네트워킹 데이터</div>
-    <div class="file-chip" id="chip-shares"><span class="dot"></span>포스팅 데이터</div>
     <div class="file-chip" id="chip-analytics"><span class="dot"></span>성과 분석 데이터</div>
   </div>
 </div>
@@ -379,7 +378,6 @@
 <div class="tabs-bar">
   <button class="tab-btn active"  id="tab-upload"  onclick="switchTab('upload')">📁 파일 업로드</button>
   <button class="tab-btn disabled" id="tab-network" onclick="switchTab('network')">🤝 네트워킹 활동 <span class="tab-badge" id="badge-network">-</span></button>
-  <button class="tab-btn disabled" id="tab-posts"   onclick="switchTab('posts')">📊 포스팅 성과 <span class="tab-badge" id="badge-posts">-</span></button>
   <button class="tab-btn disabled" id="tab-analytics" onclick="switchTab('analytics')">📈 성과 분석 <span class="tab-badge" id="badge-analytics">-</span></button>
 </div>
 
@@ -410,24 +408,6 @@
             <div class="slot-loaded-sub" id="sub-invites"></div>
           </div>
         </div>
-        <!-- Shares slot -->
-        <div class="upload-slot" id="slot-shares"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
-          ondragleave="this.classList.remove('drag-over')"
-          ondrop="onDrop(event,'shares')">
-          <div id="slot-shares-empty">
-            <div class="slot-icon">📝</div>
-            <div class="slot-title">포스팅 데이터</div>
-            <div class="slot-desc"><strong>Shares.csv</strong> 또는<br>LinkedIn ZIP 파일을 올려주세요</div>
-            <button class="slot-btn" onclick="triggerFile('shares')">파일 선택</button>
-          </div>
-          <div id="slot-shares-loaded" style="display:none">
-            <button class="slot-remove" onclick="clearSlot('shares')">✕</button>
-            <div class="slot-icon">✅</div>
-            <div class="slot-loaded-info" id="info-shares"></div>
-            <div class="slot-loaded-sub" id="sub-shares"></div>
-          </div>
-        </div>
       </div><!-- /upload-grid 2col -->
 
       <!-- Analytics slot: full-width row -->
@@ -452,7 +432,7 @@
       </div>
 
       <input type="file" id="file-invites"   accept=".zip,.csv"  style="display:none" onchange="handleFileInput(event,'invites')" />
-      <input type="file" id="file-shares"    accept=".zip,.csv"  style="display:none" onchange="handleFileInput(event,'shares')" />
+
       <input type="file" id="file-analytics" accept=".xlsx,.xls" style="display:none" onchange="handleFileInput(event,'analytics')" />
 
       <details class="guide-box">
@@ -495,34 +475,6 @@
     </div>
   </div>
 
-  <!-- ═══ TAB: POSTS ═══ -->
-  <div class="tab-panel" id="panel-posts">
-    <div class="section-header">
-      <h2>📊 포스팅 성과 분석</h2>
-      <button class="reset-btn" onclick="clearSlot('shares');switchTab('upload')">↺ 파일 변경</button>
-    </div>
-    <div class="kpi-grid" id="post-kpi"></div>
-    <div class="charts-grid">
-      <div class="chart-card wide"><h3>월별 게시물 성과 추이</h3><div class="chart-wrap tall"><canvas id="postTrendChart"></canvas></div></div>
-      <div class="chart-card"><h3>요일별 평균 참여도</h3><div class="chart-wrap"><canvas id="postDowChart"></canvas></div></div>
-      <div class="chart-card"><h3>콘텐츠 유형별 성과</h3><div class="chart-wrap"><canvas id="postTypeChart"></canvas></div></div>
-      <div class="chart-card"><h3>게시물 길이별 참여도</h3><div class="chart-wrap"><canvas id="postLenChart"></canvas></div></div>
-      <div class="chart-card"><h3>참여 유형 분포</h3><div class="chart-wrap"><canvas id="postEngChart"></canvas></div></div>
-    </div>
-    <div class="table-card">
-      <h3>🏆 참여도 TOP 10 게시물</h3>
-      <div id="post-top-table"></div>
-    </div>
-    <div class="ai-section">
-      <h3>🤖 AI 포스팅 인사이트</h3>
-      <p>게시물 데이터를 분석해 성과 패턴, 최적 전략, 다음 포스팅 아이디어를 제안합니다.</p>
-      <div class="ai-input-row">
-        <input type="password" class="ai-key-input" id="post-ai-key" placeholder="Anthropic API 키 (sk-ant-...)" />
-        <button class="ai-run-btn" id="post-ai-btn" onclick="runPostAI()">✨ AI 분석 시작</button>
-      </div>
-      <div class="ai-result" id="post-ai-result"></div>
-    </div>
-  </div>
 
 
   <!-- ═══ TAB: ANALYTICS ═══ -->
@@ -620,7 +572,7 @@ const charts = {};
 
 // ── Tab switching ────────────────────────────
 function switchTab(name) {
-  ['upload','network','posts','analytics'].forEach(t => {
+  ['upload','network','analytics'].forEach(t => {
     document.getElementById('tab-'+t)?.classList.remove('active');
     document.getElementById('panel-'+t)?.classList.remove('active');
   });
@@ -635,6 +587,7 @@ function switchTab(name) {
 }
 function enableTab(name, count) {
   const btn = document.getElementById('tab-'+name);
+  if (!btn) return;
   btn.classList.remove('disabled');
   document.getElementById('badge-'+name).textContent = count.toLocaleString()+'건';
 }
@@ -652,53 +605,62 @@ function handleFileInput(event, slot) {
   if (f) processFile(f, slot);
   event.target.value = '';
 }
+
+// ── Single unified processFile ────────────────
 async function processFile(file, slot) {
   try {
-    let csvText;
-    if (file.name.toLowerCase().endsWith('.zip')) {
-      const zip = await JSZip.loadAsync(file);
-      const target = slot === 'invites'
-        ? Object.values(zip.files).find(f => /invitations?\.csv$/i.test(f.name))
-        : Object.values(zip.files).find(f => /shares?\.csv$/i.test(f.name) || /posts?\.csv$/i.test(f.name));
-      if (!target) throw new Error(`ZIP에서 ${slot==='invites'?'Invitations':'Shares'}.csv를 찾을 수 없습니다.`);
-      csvText = await target.async('string');
-    } else {
-      csvText = await file.text();
-    }
-    if (slot === 'invites') {
+    if (slot === 'analytics') {
+      const buf = await file.arrayBuffer();
+      const data = parseLinkedInAnalytics(buf);
+      if (!data.dailyImp.length) throw new Error('유효한 데이터가 없습니다.');
+      state.analytics = data;
+      setSlotLoaded('analytics',
+        `노출 ${data.summary.totalImpressions.toLocaleString()}회 · 팔로워 ${data.currentFollowers}명`,
+        getDateRange(data.dailyImp.map(r=>r.date)));
+      enableTab('analytics', data.dailyImp.length);
+      renderAnalyticsDashboard();
+      switchTab('analytics');
+    } else if (slot === 'invites') {
+      let csvText;
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        const zip = await JSZip.loadAsync(file);
+        const target = Object.values(zip.files).find(f => /invitations?\.csv$/i.test(f.name));
+        if (!target) throw new Error('ZIP에서 Invitations.csv를 찾을 수 없습니다.');
+        csvText = await target.async('string');
+      } else {
+        csvText = await file.text();
+      }
       state.invites = parseInvitations(csvText);
       if (!state.invites.length) throw new Error('유효한 데이터가 없습니다.');
       setSlotLoaded('invites', `${state.invites.length}개 연결 요청 로드됨`, getDateRange(state.invites.map(r=>r.date)));
       enableTab('network', state.invites.length);
       renderNetworkDashboard();
       switchTab('network');
-    } else {
-      state.shares = parsePosts(csvText);
-      if (!state.shares.length) throw new Error('유효한 데이터가 없습니다.');
-      setSlotLoaded('shares', `${state.shares.length}개 게시물 로드됨`, getDateRange(state.shares.map(r=>r.date)));
-      enableTab('posts', state.shares.length);
-      renderPostsDashboard();
-      switchTab('posts');
     }
   } catch(err) { alert('⚠️ ' + err.message); }
 }
+
 function setSlotLoaded(slot, info, sub) {
   document.getElementById('slot-'+slot+'-empty').style.display = 'none';
   document.getElementById('slot-'+slot+'-loaded').style.display = 'block';
   document.getElementById('slot-'+slot).classList.add('loaded');
   document.getElementById('info-'+slot).textContent = info;
   document.getElementById('sub-'+slot).textContent = sub;
-  document.getElementById(slot==='invites'?'chip-invites':'chip-shares').classList.add('loaded');
+  const chipId = { invites:'chip-invites', analytics:'chip-analytics' }[slot];
+  if (chipId) document.getElementById(chipId).classList.add('loaded');
 }
 function clearSlot(slot) {
-  state[slot==='invites'?'invites':'shares'] = null;
+  state[slot] = null;
   document.getElementById('slot-'+slot+'-empty').style.display = 'block';
   document.getElementById('slot-'+slot+'-loaded').style.display = 'none';
   document.getElementById('slot-'+slot).classList.remove('loaded');
-  document.getElementById(slot==='invites'?'chip-invites':'chip-shares').classList.remove('loaded');
-  const tabName = slot==='invites'?'network':'posts';
-  document.getElementById('tab-'+tabName).classList.add('disabled');
-  document.getElementById('badge-'+tabName).textContent = '-';
+  const chipId = { invites:'chip-invites', analytics:'chip-analytics' }[slot];
+  if (chipId) document.getElementById(chipId).classList.remove('loaded');
+  const tabName = { invites:'network', analytics:'analytics' }[slot];
+  if (tabName) {
+    document.getElementById('tab-'+tabName).classList.add('disabled');
+    document.getElementById('badge-'+tabName).textContent = '-';
+  }
 }
 function getDateRange(dates) {
   const valid = dates.filter(Boolean).sort((a,b)=>a-b);
@@ -706,35 +668,13 @@ function getDateRange(dates) {
   return `${valid[0].toLocaleDateString('ko-KR')} ~ ${valid[valid.length-1].toLocaleDateString('ko-KR')}`;
 }
 
-// ── Parse ────────────────────────────────────
+// ── Parse ─────────────────────────────────────
 function parseInvitations(text) {
   const { data } = Papa.parse(text, { header:true, skipEmptyLines:true });
   return data.map(row => {
     const date = new Date(row['Sent At']||row['SentAt']||'');
     return { from: row['From']||'', to: row['To']||'', date: isNaN(date)?null:date, message:(row['Message']||'').trim(), direction:(row['Direction']||'').toUpperCase() };
   }).filter(r => r.date||r.from);
-}
-function parsePosts(text) {
-  const { data } = Papa.parse(text, { header:true, skipEmptyLines:true });
-  const col = (row,...names) => { for(const n of names){const v=row[n]??row[n.toLowerCase()]??row[n.toUpperCase()]; if(v!==undefined)return v;} return ''; };
-  return data.map(row => {
-    const date = new Date(col(row,'Date','date','Timestamp'));
-    const postText = col(row,'ShareCommentary','shareCommentary','Commentary','Text');
-    const media = normalizeMedia((col(row,'ShareMediaCategory','shareMediaCategory','MediaType','Type')||'TEXT').toUpperCase());
-    const likes    = parseInt(col(row,'LikeCount','likeCount','Likes','Reactions'))||0;
-    const comments = parseInt(col(row,'CommentCount','commentCount','Comments'))||0;
-    const reposts  = parseInt(col(row,'RepostCount','repostCount','Reposts','ShareCount','Shares'))||0;
-    return { date:isNaN(date)?null:date, text:String(postText), media, likes, comments, reposts, score:likes+comments*3+reposts*5, length:String(postText).length };
-  }).filter(r=>r.text||r.date);
-}
-function normalizeMedia(m) {
-  if(!m||m==='NONE'||m===''||m==='TEXT') return 'TEXT';
-  if(m.includes('IMAGE')||m==='PHOTO') return 'IMAGE';
-  if(m.includes('VIDEO')) return 'VIDEO';
-  if(m.includes('ARTICLE')||m==='URL') return 'ARTICLE';
-  if(m.includes('DOCUMENT')) return 'DOCUMENT';
-  if(m.includes('POLL')) return 'POLL';
-  return m;
 }
 
 // ── Network Dashboard ────────────────────────
@@ -781,50 +721,6 @@ function renderNetworkDashboard() {
     :`<table class="data-table"><thead><tr><th>날짜</th><th>방향</th><th>상대방</th><th>메시지</th></tr></thead><tbody>${msgs.map(r=>`<tr><td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${r.date?r.date.toLocaleDateString('ko-KR'):'-'}</td><td>${r.direction==='OUTGOING'?'<span class="dir-out">발신</span>':'<span class="dir-in">수신</span>'}</td><td style="font-size:13px">${esc(r.direction==='OUTGOING'?r.to:r.from)}</td><td class="text-cell" title="${esc(r.message)}">${esc(r.message)}</td></tr>`).join('')}</tbody></table>`;
 }
 
-// ── Posts Dashboard ──────────────────────────
-function renderPostsDashboard() {
-  const posts=state.shares, total=posts.length;
-  const tL=posts.reduce((s,p)=>s+p.likes,0), tC=posts.reduce((s,p)=>s+p.comments,0), tR=posts.reduce((s,p)=>s+p.reposts,0), tE=tL+tC+tR;
-  document.getElementById('post-kpi').innerHTML=`
-    <div class="kpi-card accent"><div class="kpi-label">총 게시물</div><div class="kpi-value">${total}</div><div class="kpi-sub">전체 포스팅</div></div>
-    <div class="kpi-card"><div class="kpi-label">총 참여</div><div class="kpi-value">${tE.toLocaleString()}</div><div class="kpi-sub">좋아요+댓글+리포스트</div></div>
-    <div class="kpi-card"><div class="kpi-label">게시물당 평균</div><div class="kpi-value">${total?(tE/total).toFixed(1):0}</div><div class="kpi-sub">평균 참여 수</div></div>
-    <div class="kpi-card"><div class="kpi-label">좋아요</div><div class="kpi-value" style="color:var(--accent)">${tL.toLocaleString()}</div><div class="kpi-sub">평균 ${total?(tL/total).toFixed(1):0}/건</div></div>
-    <div class="kpi-card"><div class="kpi-label">댓글</div><div class="kpi-value" style="color:var(--purple)">${tC.toLocaleString()}</div><div class="kpi-sub">평균 ${total?(tC/total).toFixed(1):0}/건</div></div>
-    <div class="kpi-card green"><div class="kpi-label">최고 참여 점수</div><div class="kpi-value" style="color:var(--green)">${total?Math.max(...posts.map(p=>p.score)):0}</div><div class="kpi-sub">단일 게시물 최고</div></div>
-  `;
-  const monthly={};
-  posts.forEach(p=>{if(!p.date)return;const k=`${p.date.getFullYear()}-${String(p.date.getMonth()+1).padStart(2,'0')}`;if(!monthly[k])monthly[k]={count:0,score:0};monthly[k].count++;monthly[k].score+=p.score;});
-  const mL=Object.keys(monthly).sort();
-  destroyChart('postTrendChart');
-  charts.postTrend=new Chart(document.getElementById('postTrendChart'),{type:'bar',data:{labels:mL,datasets:[
-    {label:'게시물 수',data:mL.map(k=>monthly[k].count),backgroundColor:'rgba(10,102,194,0.25)',borderColor:'#0a66c2',borderWidth:2,yAxisID:'y1',order:2},
-    {label:'평균 참여 점수',data:mL.map(k=>+(monthly[k].score/monthly[k].count).toFixed(1)),type:'line',borderColor:'#d97706',backgroundColor:'rgba(217,119,6,0.07)',fill:true,borderWidth:2.5,pointRadius:4,yAxisID:'y2',order:1},
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#64748b',font:{size:11}}}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}},y1:{ticks:{color:'#0a66c2',font:{size:10}},grid:{color:'#f1f5f9'},position:'left'},y2:{ticks:{color:'#d97706',font:{size:10}},grid:{display:false},position:'right'}}}});
-  const days=['일','월','화','수','목','금','토'];
-  const dow=Array(7).fill(null).map(()=>({sum:0,count:0}));
-  posts.forEach(p=>{if(p.date){const d=p.date.getDay();dow[d].sum+=p.score;dow[d].count++;}});
-  const dowAvg=dow.map(d=>d.count?+(d.sum/d.count).toFixed(1):0);
-  const maxDow=dowAvg.indexOf(Math.max(...dowAvg));
-  destroyChart('postDowChart');
-  charts.postDow=new Chart(document.getElementById('postDowChart'),{type:'bar',data:{labels:days,datasets:[{label:'평균 참여 점수',data:dowAvg,backgroundColor:dowAvg.map((_,i)=>i===maxDow?'#0a66c2':'rgba(10,102,194,0.22)'),borderRadius:7}]},options:lightChartOpts()});
-  const typeMap={};
-  posts.forEach(p=>{if(!typeMap[p.media])typeMap[p.media]={sum:0,count:0};typeMap[p.media].sum+=p.score;typeMap[p.media].count++;});
-  const typeLabels=Object.keys(typeMap).sort((a,b)=>typeMap[b].sum/typeMap[b].count-typeMap[a].sum/typeMap[a].count);
-  const typeColors={TEXT:'#94a3b8',IMAGE:'#7c3aed',VIDEO:'#dc2626',ARTICLE:'#d97706',DOCUMENT:'#16a34a',POLL:'#0891b2'};
-  destroyChart('postTypeChart');
-  charts.postType=new Chart(document.getElementById('postTypeChart'),{type:'bar',data:{labels:typeLabels,datasets:[{label:'평균 참여',data:typeLabels.map(k=>+(typeMap[k].sum/typeMap[k].count).toFixed(1)),backgroundColor:typeLabels.map(l=>typeColors[l]||'#0a66c2'),borderRadius:7}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}},y:{ticks:{color:'#1e293b',font:{size:11}},grid:{color:'#f1f5f9'}}}}});
-  const buckets=[{label:'~100자',min:0,max:100},{label:'101~300',min:101,max:300},{label:'301~700',min:301,max:700},{label:'701~1200',min:701,max:1200},{label:'1200자+',min:1201,max:Infinity}];
-  const bData=buckets.map(b=>{const ps=posts.filter(p=>p.length>=b.min&&p.length<=b.max);return ps.length?+(ps.reduce((s,p)=>s+p.score,0)/ps.length).toFixed(1):0;});
-  const maxLen=bData.indexOf(Math.max(...bData));
-  destroyChart('postLenChart');
-  charts.postLen=new Chart(document.getElementById('postLenChart'),{type:'bar',data:{labels:buckets.map(b=>b.label),datasets:[{label:'평균 참여 점수',data:bData,backgroundColor:bData.map((_,i)=>i===maxLen?'#d97706':'rgba(217,119,6,0.25)'),borderRadius:7}]},options:lightChartOpts()});
-  destroyChart('postEngChart');
-  charts.postEng=new Chart(document.getElementById('postEngChart'),{type:'doughnut',data:{labels:[`좋아요 (${tL})`,`댓글 (${tC})`,`리포스트 (${tR})`],datasets:[{data:[tL,tC,tR],backgroundColor:['#0a66c2','#7c3aed','#16a34a'],borderColor:'#ffffff',borderWidth:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:'#64748b',font:{size:11},padding:12}}}}});
-  const top=[...posts].sort((a,b)=>b.score-a.score).slice(0,10);
-  document.getElementById('post-top-table').innerHTML=`<table class="data-table"><thead><tr><th>#</th><th>날짜</th><th>내용</th><th>유형</th><th>반응</th><th>점수</th></tr></thead><tbody>${top.map((p,i)=>`<tr><td style="color:var(--text-dim);font-size:12px">${i+1}</td><td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${p.date?p.date.toLocaleDateString('ko-KR'):'-'}</td><td class="text-cell" title="${esc(p.text)}">${esc(p.text)||'(내용없음)'}</td><td><span class="media-badge media-${p.media}">${p.media}</span></td><td><div class="stat-inline"><span style="color:var(--accent);font-size:12px">👍${p.likes}</span><span style="color:var(--purple);font-size:12px">💬${p.comments}</span><span style="color:var(--green);font-size:12px">🔁${p.reposts}</span></div></td><td class="eng-score">${p.score}</td></tr>`).join('')}</tbody></table>`;
-}
-
 // ── AI ───────────────────────────────────────
 async function runNetAI() {
   const key=document.getElementById('net-ai-key').value.trim();
@@ -842,27 +738,6 @@ async function runNetAI() {
   } catch(e){res.innerHTML=`<span style="color:var(--red)">⚠️ ${esc(e.message)}</span>`;}
   finally{btn.disabled=false;btn.innerHTML='✨ AI 분석 시작';}
 }
-async function runPostAI() {
-  const key=document.getElementById('post-ai-key').value.trim();
-  if(!key){alert('API 키를 입력해주세요.');return;}
-  const btn=document.getElementById('post-ai-btn'), res=document.getElementById('post-ai-result');
-  btn.disabled=true; btn.textContent='⏳ 분석 중...';
-  res.classList.add('active'); res.innerHTML='<span style="color:var(--text-muted)">분석 중입니다...</span>';
-  try {
-    const posts=state.shares, total=posts.length;
-    const tL=posts.reduce((s,p)=>s+p.likes,0), tC=posts.reduce((s,p)=>s+p.comments,0), tR=posts.reduce((s,p)=>s+p.reposts,0);
-    const top5=[...posts].sort((a,b)=>b.score-a.score).slice(0,5);
-    const typeMap={}; posts.forEach(p=>{if(!typeMap[p.media])typeMap[p.media]={sum:0,count:0};typeMap[p.media].sum+=p.score;typeMap[p.media].count++;});
-    const bestType=Object.entries(typeMap).sort((a,b)=>b[1].sum/b[1].count-a[1].sum/a[1].count)[0];
-    const days=['일','월','화','수','목','금','토'], dow=Array(7).fill(null).map(()=>({sum:0,count:0}));
-    posts.forEach(p=>{if(p.date){const d=p.date.getDay();dow[d].sum+=p.score;dow[d].count++;}});
-    const bestDay=days[dow.reduce((bi,d,i)=>(d.count&&d.sum/d.count>(dow[bi].count?dow[bi].sum/dow[bi].count:0))?i:bi,0)];
-    const prompt=`당신은 LinkedIn 콘텐츠 전략 전문가입니다.\n\n## 데이터\n- 총 게시물: ${total}개 | 좋아요:${tL} 댓글:${tC} 리포스트:${tR}\n- 게시물당 평균 참여: ${total?((tL+tC+tR)/total).toFixed(1):0}\n- 최고 성과 요일: ${bestDay}요일\n- 최고 성과 유형: ${bestType?`${bestType[0]} (평균 ${(bestType[1].sum/bestType[1].count).toFixed(1)}점)`:'-'}\n\n## TOP 5 게시물\n${top5.map((p,i)=>`${i+1}. [${p.date?p.date.toLocaleDateString('ko-KR'):'-'}] ${p.media} 점수:${p.score}\n   "${p.text.slice(0,150)}"`).join('\n')}\n\n---\n**[1. 성과 패턴 분석]** 높은 참여를 만드는 패턴 (3-4개)\n**[2. 콘텐츠 전략 인사이트]** 유형·길이·스타일 (3-4개)\n**[3. 최적화 제안]** 즉시 적용 가능한 방법 (3-4개)\n**[4. 다음 포스팅 아이디어]** 성과 패턴 기반 주제 제안 2-3개`;
-    res.innerHTML=formatAI(await callClaude(key,prompt));
-  } catch(e){res.innerHTML=`<span style="color:var(--red)">⚠️ ${esc(e.message)}</span>`;}
-  finally{btn.disabled=false;btn.innerHTML='✨ AI 분석 시작';}
-}
-
 // ── Utilities ────────────────────────────────
 async function callClaude(key, prompt) {
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,messages:[{role:'user',content:prompt}]})});
@@ -939,30 +814,6 @@ function parseKorDate(str) {
   if (!m) return null;
   const d = new Date(+m[1], +m[2]-1, +m[3]);
   return isNaN(d) ? null : d;
-}
-
-// ── processFile: handle analytics xlsx ──
-const _origProcessFile = processFile;
-// Extend state
-state.analytics = null;
-
-// Override to handle analytics slot
-const _baseProcessFile = processFile;
-async function processFile(file, slot) {
-  if (slot !== 'analytics') { return _baseProcessFile(file, slot); }
-  try {
-    const buf = await file.arrayBuffer();
-    const data = parseLinkedInAnalytics(buf);
-    if (!data.dailyImp.length) throw new Error('유효한 데이터가 없습니다.');
-    state.analytics = data;
-    const range = getDateRange(data.dailyImp.map(r=>r.date));
-    setSlotLoaded('analytics',
-      `노출 ${data.summary.totalImpressions.toLocaleString()}회 · 팔로워 ${data.currentFollowers}명`,
-      range);
-    enableTab('analytics', data.dailyImp.length);
-    renderAnalyticsDashboard();
-    switchTab('analytics');
-  } catch(err) { alert('⚠️ ' + err.message); }
 }
 
 // ── Render Analytics Dashboard ──
