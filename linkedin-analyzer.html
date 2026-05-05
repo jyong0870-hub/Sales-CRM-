@@ -761,18 +761,41 @@ function parseLinkedInAnalytics(arrayBuffer) {
   })).filter(r=>r.date);
 
   // ── 이용자정보 (sheet 4): [카테고리, 항목, 비율] ──
+  // 카테고리명 정규화: LinkedIn 한/영 버전 + 공백 차이 대응
+  function normCat(raw) {
+    const s = String(raw||'').trim();
+    if (/직책|직무|job.?func|position|title/i.test(s)) return '직책';
+    if (/업종|산업|industry/i.test(s)) return '업종';
+    if (/연차|경력|seniority|senior/i.test(s)) return '연차';
+    if (/회사\s*규모|company.?size/i.test(s)) return '회사규모';
+    if (/^회사$|^company$|employer/i.test(s)) return '회사';
+    if (/위치|지역|location|country|city|region/i.test(s)) return '위치';
+    return s;
+  }
+  function parsePct(v) {
+    if (typeof v === 'number') return v > 1 ? v / 100 : v; // 23 → 0.23, 0.23 → 0.23
+    if (typeof v === 'string') {
+      const n = parseFloat(v.replace('%',''));
+      if (!isNaN(n)) return n > 1 ? n / 100 : n;
+    }
+    return 0;
+  }
   const audRows = toArr(sheets[4]).slice(1);
   const audience = {};
   let lastCat = '';
   audRows.forEach(r => {
-    if (!r[1]) return;
-    const cat = r[0] || lastCat;
-    if (r[0]) lastCat = r[0];
+    if (r[1] === null || r[1] === undefined || r[1] === '') return;
+    const rawCat = r[0] ? String(r[0]).trim() : '';
+    if (rawCat) lastCat = rawCat;
+    const cat = normCat(lastCat || rawCat);
+    if (!cat) return;
     if (!audience[cat]) audience[cat] = [];
-    const pct = typeof r[2] === 'number' ? r[2] : 0;
-    audience[cat].push({ label: String(r[1]), pct });
+    const pct = parsePct(r[2]);
+    audience[cat].push({ label: String(r[1]).trim(), pct });
   });
 
+  console.log('[LinkedIn Analytics] Audience keys:', Object.keys(audience));
+  console.log('[LinkedIn Analytics] Audience sample:', Object.entries(audience).map(([k,v])=>`${k}(${v.length}개)`).join(', '));
   return { summary, dailyImp, topByEng, topByImp, dailyFol, currentFollowers, audience };
 }
 
