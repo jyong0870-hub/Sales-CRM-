@@ -896,15 +896,22 @@ function renderAnalyticsDashboard() {
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(c)=>`참여 ${c.raw.toLocaleString()}회`}}}, scales:{ x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}}, y:{ticks:{color:'#1e293b',font:{size:11}},grid:{color:'#f1f5f9'}} } },
   });
 
-  // 오디언스 차트
+  // 오디언스 차트 - 여러 가능한 키 이름을 순서대로 시도
+  function getAudItems(aud, ...keys) {
+    for (const k of keys) {
+      const arr = aud[k];
+      if (arr && arr.length > 0) return arr.filter(i => i.pct > 0).slice(0, 5);
+    }
+    return [];
+  }
   const palettes = { job:['#0a66c2','#1d4ed8','#3b82f6','#60a5fa','#93c5fd'], ind:['#7c3aed','#6d28d9','#8b5cf6','#a78bfa','#c4b5fd'], sen:['#d97706','#b45309','#f59e0b','#fbbf24','#fcd34d'], size:['#16a34a','#15803d','#22c55e','#4ade80','#86efac'] };
   [
-    { key:'직책', id:'anJobChart', pal: palettes.job },
-    { key:'업종', id:'anIndChart', pal: palettes.ind },
-    { key:'연차', id:'anSenChart', pal: palettes.sen },
-    { key:'회사규모', id:'anSizeChart', pal: palettes.size },
-  ].forEach(({key, id, pal}) => {
-    const items = (d.audience[key]||[]).filter(i=>i.pct>0).slice(0,5);
+    { keys:['직책','직함','직무'], id:'anJobChart', pal: palettes.job },
+    { keys:['업종','업계','산업'], id:'anIndChart', pal: palettes.ind },
+    { keys:['연차','직급','경력'], id:'anSenChart', pal: palettes.sen },
+    { keys:['회사규모','회사 규모'], id:'anSizeChart', pal: palettes.size },
+  ].forEach(({keys, id, pal}) => {
+    const items = getAudItems(d.audience, ...keys);
     destroyChart(id);
     if (!items.length) return;
     charts[id] = new Chart(document.getElementById(id), {
@@ -945,9 +952,10 @@ async function runAnalyticsAI() {
     const monthly={};
     d.dailyImp.forEach(r=>{const k=`${r.date.getFullYear()}-${String(r.date.getMonth()+1).padStart(2,'0')}`;if(!monthly[k])monthly[k]={imp:0,fol:0};monthly[k].imp+=r.impressions;monthly[k].fol+=r.newFollowers;});
     const bestMonth=Object.entries(monthly).sort((a,b)=>b[1].imp-a[1].imp)[0];
-    const topJobs=(d.audience['직책']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
-    const topInd=(d.audience['업종']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
-    const topSen=(d.audience['연차']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
+    const getAud3 = (...keys) => { for(const k of keys){const a=d.audience[k]; if(a&&a.length) return a.slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');} return '데이터 없음'; };
+    const topJobs = getAud3('직책','직함','직무');
+    const topInd  = getAud3('업종','업계','산업');
+    const topSen  = getAud3('연차','직급','경력');
     const prompt=`당신은 LinkedIn 크리에이터 전략 전문가입니다. 아래 데이터를 분석해 한국어로 인사이트를 제공하세요.
 
 ## 성과 데이터 (최근 365일)
