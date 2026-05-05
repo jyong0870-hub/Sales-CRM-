@@ -780,7 +780,13 @@ function parseLinkedInAnalytics(arrayBuffer) {
     }
     return 0;
   }
-  const audRows = toArr(sheets[4]).slice(1);
+  // sheet 4 전체 구조 디버그
+  const rawSheet4 = toArr(sheets[4]);
+  console.log('[Sheet4] total rows:', rawSheet4.length);
+  console.log('[Sheet4] first 20 rows (raw):');
+  rawSheet4.slice(0, 20).forEach((r, i) => console.log(`  row${i}:`, JSON.stringify(r)));
+
+  const audRows = rawSheet4.slice(1);
   const audience = {};
   let lastCat = '';
   audRows.forEach(r => {
@@ -794,8 +800,8 @@ function parseLinkedInAnalytics(arrayBuffer) {
     audience[cat].push({ label: String(r[1]).trim(), pct });
   });
 
-  console.log('[LinkedIn Analytics] Audience keys:', Object.keys(audience));
-  console.log('[LinkedIn Analytics] Audience sample:', Object.entries(audience).map(([k,v])=>`${k}(${v.length}개)`).join(', '));
+  console.log('[LinkedIn Analytics] Audience keys found:', Object.keys(audience));
+  console.log('[LinkedIn Analytics] Audience data:', JSON.stringify(audience, null, 2));
   return { summary, dailyImp, topByEng, topByImp, dailyFol, currentFollowers, audience };
 }
 
