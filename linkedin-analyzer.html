@@ -6,6 +6,7 @@
   <title>LinkedIn 분석기</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root {
@@ -370,6 +371,7 @@
   <div class="file-status">
     <div class="file-chip" id="chip-invites"><span class="dot"></span>네트워킹 데이터</div>
     <div class="file-chip" id="chip-shares"><span class="dot"></span>포스팅 데이터</div>
+    <div class="file-chip" id="chip-analytics"><span class="dot"></span>성과 분석 데이터</div>
   </div>
 </div>
 
@@ -378,6 +380,7 @@
   <button class="tab-btn active"  id="tab-upload"  onclick="switchTab('upload')">📁 파일 업로드</button>
   <button class="tab-btn disabled" id="tab-network" onclick="switchTab('network')">🤝 네트워킹 활동 <span class="tab-badge" id="badge-network">-</span></button>
   <button class="tab-btn disabled" id="tab-posts"   onclick="switchTab('posts')">📊 포스팅 성과 <span class="tab-badge" id="badge-posts">-</span></button>
+  <button class="tab-btn disabled" id="tab-analytics" onclick="switchTab('analytics')">📈 성과 분석 <span class="tab-badge" id="badge-analytics">-</span></button>
 </div>
 
 <div class="container">
@@ -425,9 +428,32 @@
             <div class="slot-loaded-sub" id="sub-shares"></div>
           </div>
         </div>
+      </div><!-- /upload-grid 2col -->
+
+      <!-- Analytics slot: full-width row -->
+      <div style="max-width:860px;margin:0 auto 0;">
+        <div class="upload-slot" id="slot-analytics"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="onDrop(event,'analytics')">
+          <div id="slot-analytics-empty">
+            <div class="slot-icon">📈</div>
+            <div class="slot-title">성과 분석 데이터 (LinkedIn Creator Analytics)</div>
+            <div class="slot-desc">LinkedIn 크리에이터 분석에서 내보낸 <strong>XLSX 파일</strong>을 올려주세요<br><span style="color:var(--accent);font-size:11px">노출수 · 팔로워 · TOP 게시물 · 오디언스 직책/업종/연차 분석 포함</span></div>
+            <button class="slot-btn" onclick="triggerFile('analytics')">파일 선택</button>
+          </div>
+          <div id="slot-analytics-loaded" style="display:none">
+            <button class="slot-remove" onclick="clearSlot('analytics')">✕</button>
+            <div class="slot-icon">✅</div>
+            <div class="slot-loaded-info" id="info-analytics"></div>
+            <div class="slot-loaded-sub" id="sub-analytics"></div>
+          </div>
+        </div>
       </div>
-      <input type="file" id="file-invites" accept=".zip,.csv" style="display:none" onchange="handleFileInput(event,'invites')" />
-      <input type="file" id="file-shares"  accept=".zip,.csv" style="display:none" onchange="handleFileInput(event,'shares')" />
+
+      <input type="file" id="file-invites"   accept=".zip,.csv"  style="display:none" onchange="handleFileInput(event,'invites')" />
+      <input type="file" id="file-shares"    accept=".zip,.csv"  style="display:none" onchange="handleFileInput(event,'shares')" />
+      <input type="file" id="file-analytics" accept=".xlsx,.xls" style="display:none" onchange="handleFileInput(event,'analytics')" />
 
       <details class="guide-box">
         <summary>📥 LinkedIn 데이터 내보내기 방법 (클릭하여 보기)</summary>
@@ -498,6 +524,58 @@
     </div>
   </div>
 
+
+  <!-- ═══ TAB: ANALYTICS ═══ -->
+  <div class="tab-panel" id="panel-analytics">
+    <div class="section-header">
+      <h2>📈 크리에이터 성과 분석</h2>
+      <button class="reset-btn" onclick="clearSlot('analytics');switchTab('upload')">↺ 파일 변경</button>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="an-kpi"></div>
+
+    <!-- 노출 + 팔로워 추이 -->
+    <div class="charts-grid">
+      <div class="chart-card wide"><h3>월별 노출수 추이</h3><div class="chart-wrap tall"><canvas id="anImpChart"></canvas></div></div>
+      <div class="chart-card wide"><h3>팔로워 성장 추이</h3><div class="chart-wrap"><canvas id="anFolChart"></canvas></div></div>
+      <div class="chart-card"><h3>요일별 평균 노출수</h3><div class="chart-wrap"><canvas id="anDowChart"></canvas></div></div>
+      <div class="chart-card"><h3>월별 신규 팔로워</h3><div class="chart-wrap"><canvas id="anNewFolChart"></canvas></div></div>
+    </div>
+
+    <!-- TOP 게시물 -->
+    <div class="charts-grid">
+      <div class="chart-card wide"><h3>🏆 노출수 TOP 10 게시물</h3><div class="chart-wrap tall"><canvas id="anTopImpChart"></canvas></div></div>
+      <div class="chart-card wide"><h3>💬 참여수 TOP 10 게시물</h3><div class="chart-wrap tall"><canvas id="anTopEngChart"></canvas></div></div>
+    </div>
+
+    <!-- 오디언스 분석 -->
+    <div style="margin-bottom:6px;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em">👥 오디언스 분석</div>
+    <div class="charts-grid" style="margin-bottom:24px">
+      <div class="chart-card"><h3>직책 분포</h3><div class="chart-wrap"><canvas id="anJobChart"></canvas></div></div>
+      <div class="chart-card"><h3>업종 분포</h3><div class="chart-wrap"><canvas id="anIndChart"></canvas></div></div>
+      <div class="chart-card"><h3>연차 분포</h3><div class="chart-wrap"><canvas id="anSenChart"></canvas></div></div>
+      <div class="chart-card"><h3>회사 규모 분포</h3><div class="chart-wrap"><canvas id="anSizeChart"></canvas></div></div>
+    </div>
+
+    <!-- TOP 회사 테이블 -->
+    <div class="table-card">
+      <h3>🏢 팔로워 상위 회사</h3>
+      <div id="an-company-table"></div>
+    </div>
+
+    <!-- AI -->
+    <div class="ai-section">
+      <h3>🤖 AI 성과 인사이트</h3>
+      <p>노출·팔로워·오디언스 데이터를 종합 분석해 콘텐츠 전략 인사이트를 제공합니다.</p>
+      <div class="ai-input-row">
+        <input type="password" class="ai-key-input" id="an-ai-key" placeholder="Anthropic API 키 (sk-ant-...)" />
+        <button class="ai-run-btn" id="an-ai-btn" onclick="runAnalyticsAI()">✨ AI 분석 시작</button>
+      </div>
+      <div class="ai-result" id="an-ai-result"></div>
+    </div>
+  </div>
+
 </div><!-- /container -->
 
 <script>
@@ -542,7 +620,7 @@ const charts = {};
 
 // ── Tab switching ────────────────────────────
 function switchTab(name) {
-  ['upload','network','posts'].forEach(t => {
+  ['upload','network','posts','analytics'].forEach(t => {
     document.getElementById('tab-'+t)?.classList.remove('active');
     document.getElementById('panel-'+t)?.classList.remove('active');
   });
@@ -799,6 +877,252 @@ function lightChartOpts({stacked=false}={}) {
 }
 function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ══════════════════════════════════════════════
+//  ANALYTICS: Parse LinkedIn Creator XLSX
+// ══════════════════════════════════════════════
+function parseLinkedInAnalytics(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheets = wb.SheetNames;
+  if (sheets.length < 5) throw new Error('LinkedIn 크리에이터 분석 파일 형식이 아닙니다. (5개 시트 필요)');
+
+  const toArr = (name) => XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:null });
+
+  // ── 요약 (sheet 0) ──
+  const sumRows = toArr(sheets[0]);
+  const summary = { totalImpressions: sumRows[1]?.[1] || 0, memberReach: sumRows[2]?.[1] || 0 };
+
+  // ── 노출 (sheet 1): [날짜, 노출수, 신규팔로워] ──
+  const impRows = toArr(sheets[1]).slice(1); // skip header
+  const dailyImp = impRows.filter(r=>r[0]).map(r => ({
+    date: parseKorDate(r[0]),
+    impressions: Number(r[1]) || 0,
+    newFollowers: Number(r[2]) || 0,
+  })).filter(r=>r.date);
+
+  // ── 상위 게시물 (sheet 2): 왼쪽=참여, 오른쪽=노출 ──
+  const postRows = toArr(sheets[2]).slice(3); // skip note+blank+header
+  const topByEng = [], topByImp = [];
+  postRows.forEach(r => {
+    if (r[0]) topByEng.push({ url: String(r[0]), date: parseKorDate(r[1]), val: Number(r[2])||0 });
+    if (r[4]) topByImp.push({ url: String(r[4]), date: parseKorDate(r[5]), val: Number(r[6])||0 });
+  });
+
+  // ── 팔로워 (sheet 3): [날짜, 총팔로워] (skip first 3 rows) ──
+  const folRows = toArr(sheets[3]);
+  const currentFollowers = Number(folRows[0]?.[1]) || 0;
+  const dailyFol = folRows.slice(3).filter(r=>r[0]).map(r=>({
+    date: parseKorDate(r[0]),
+    total: Number(r[1])||0,
+  })).filter(r=>r.date);
+
+  // ── 이용자정보 (sheet 4): [카테고리, 항목, 비율] ──
+  const audRows = toArr(sheets[4]).slice(1);
+  const audience = {};
+  let lastCat = '';
+  audRows.forEach(r => {
+    if (!r[1]) return;
+    const cat = r[0] || lastCat;
+    if (r[0]) lastCat = r[0];
+    if (!audience[cat]) audience[cat] = [];
+    const pct = typeof r[2] === 'number' ? r[2] : 0;
+    audience[cat].push({ label: String(r[1]), pct });
+  });
+
+  return { summary, dailyImp, topByEng, topByImp, dailyFol, currentFollowers, audience };
+}
+
+function parseKorDate(str) {
+  if (!str) return null;
+  const s = String(str);
+  const m = s.match(/(\d{4})[.\-\/]\s*(\d{1,2})[.\-\/]\s*(\d{1,2})/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2]-1, +m[3]);
+  return isNaN(d) ? null : d;
+}
+
+// ── processFile: handle analytics xlsx ──
+const _origProcessFile = processFile;
+// Extend state
+state.analytics = null;
+
+// Override to handle analytics slot
+const _baseProcessFile = processFile;
+async function processFile(file, slot) {
+  if (slot !== 'analytics') { return _baseProcessFile(file, slot); }
+  try {
+    const buf = await file.arrayBuffer();
+    const data = parseLinkedInAnalytics(buf);
+    if (!data.dailyImp.length) throw new Error('유효한 데이터가 없습니다.');
+    state.analytics = data;
+    const range = getDateRange(data.dailyImp.map(r=>r.date));
+    setSlotLoaded('analytics',
+      `노출 ${data.summary.totalImpressions.toLocaleString()}회 · 팔로워 ${data.currentFollowers}명`,
+      range);
+    enableTab('analytics', data.dailyImp.length);
+    renderAnalyticsDashboard();
+    switchTab('analytics');
+  } catch(err) { alert('⚠️ ' + err.message); }
+}
+
+// ── Render Analytics Dashboard ──
+function renderAnalyticsDashboard() {
+  const d = state.analytics;
+  if (!d) return;
+
+  // KPI
+  const peakDay = [...d.dailyImp].sort((a,b)=>b.impressions-a.impressions)[0];
+  const totalNewFol = d.dailyImp.reduce((s,r)=>s+r.newFollowers,0);
+  document.getElementById('an-kpi').innerHTML = `
+    <div class="kpi-card accent"><div class="kpi-label">총 노출수</div><div class="kpi-value">${d.summary.totalImpressions.toLocaleString()}</div><div class="kpi-sub">분석 기간 합계</div></div>
+    <div class="kpi-card"><div class="kpi-label">회원 도달</div><div class="kpi-value">${d.summary.memberReach.toLocaleString()}</div><div class="kpi-sub">실제 도달 인원</div></div>
+    <div class="kpi-card green"><div class="kpi-label">현재 팔로워</div><div class="kpi-value" style="color:var(--green)">${d.currentFollowers.toLocaleString()}</div><div class="kpi-sub">기간 내 +${totalNewFol} 증가</div></div>
+    <div class="kpi-card"><div class="kpi-label">최고 단일 노출</div><div class="kpi-value" style="color:var(--accent)">${peakDay?peakDay.impressions.toLocaleString():'-'}</div><div class="kpi-sub">${peakDay?peakDay.date.toLocaleDateString('ko-KR'):'-'}</div></div>
+    <div class="kpi-card"><div class="kpi-label">참여 TOP 노출</div><div class="kpi-value" style="color:var(--purple)">${d.topByImp[0]?d.topByImp[0].val.toLocaleString():'-'}</div><div class="kpi-sub">단일 게시물 최고</div></div>
+    <div class="kpi-card"><div class="kpi-label">참여 TOP 참여</div><div class="kpi-value" style="color:var(--amber)">${d.topByEng[0]?d.topByEng[0].val.toLocaleString():'-'}</div><div class="kpi-sub">단일 게시물 최고</div></div>
+  `;
+
+  // 월별 노출
+  const monthly = {};
+  d.dailyImp.forEach(r => {
+    const k = `${r.date.getFullYear()}-${String(r.date.getMonth()+1).padStart(2,'0')}`;
+    if (!monthly[k]) monthly[k] = { imp:0, fol:0 };
+    monthly[k].imp += r.impressions;
+    monthly[k].fol += r.newFollowers;
+  });
+  const mL = Object.keys(monthly).sort();
+  destroyChart('anImpChart');
+  charts.anImp = new Chart(document.getElementById('anImpChart'), {
+    type:'bar',
+    data:{ labels:mL, datasets:[{ label:'월별 노출수', data:mL.map(k=>monthly[k].imp), backgroundColor:'rgba(10,102,194,0.55)', borderColor:'#0a66c2', borderWidth:1.5, borderRadius:5 }] },
+    options:lightChartOpts(),
+  });
+
+  // 팔로워 성장
+  const folSorted = [...d.dailyFol].sort((a,b)=>a.date-b.date);
+  const step = Math.ceil(folSorted.length/80);
+  const fSampled = folSorted.filter((_,i)=>i%step===0);
+  destroyChart('anFolChart');
+  charts.anFol = new Chart(document.getElementById('anFolChart'), {
+    type:'line',
+    data:{ labels:fSampled.map(r=>r.date.toLocaleDateString('ko-KR')), datasets:[{ label:'총 팔로워', data:fSampled.map(r=>r.total), borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,0.07)', fill:true, borderWidth:2.5, pointRadius:0, tension:0.35 }] },
+    options:lightChartOpts(),
+  });
+
+  // 요일별 노출
+  const days=['일','월','화','수','목','금','토'];
+  const dow=Array(7).fill(null).map(()=>({sum:0,cnt:0}));
+  d.dailyImp.forEach(r=>{const day=r.date.getDay();dow[day].sum+=r.impressions;dow[day].cnt++;});
+  const dowAvg=dow.map(d=>d.cnt?Math.round(d.sum/d.cnt):0);
+  const maxDow=dowAvg.indexOf(Math.max(...dowAvg));
+  destroyChart('anDowChart');
+  charts.anDow = new Chart(document.getElementById('anDowChart'), {
+    type:'bar', data:{labels:days,datasets:[{label:'평균 노출수',data:dowAvg,backgroundColor:dowAvg.map((_,i)=>i===maxDow?'#0a66c2':'rgba(10,102,194,0.28)'),borderRadius:7}]},
+    options:lightChartOpts(),
+  });
+
+  // 월별 신규 팔로워
+  destroyChart('anNewFolChart');
+  charts.anNewFol = new Chart(document.getElementById('anNewFolChart'), {
+    type:'bar',
+    data:{ labels:mL, datasets:[{ label:'신규 팔로워', data:mL.map(k=>monthly[k].fol), backgroundColor:'rgba(22,163,74,0.55)', borderColor:'#16a34a', borderWidth:1.5, borderRadius:5 }] },
+    options:lightChartOpts(),
+  });
+
+  // TOP 10 노출 게시물 (horizontal bar)
+  const top10Imp = d.topByImp.slice(0,10).reverse();
+  destroyChart('anTopImpChart');
+  charts.anTopImp = new Chart(document.getElementById('anTopImpChart'), {
+    type:'bar',
+    data:{ labels:top10Imp.map(p=>`${p.date?p.date.toLocaleDateString('ko-KR'):'-'}`), datasets:[{ label:'노출수', data:top10Imp.map(p=>p.val), backgroundColor:'rgba(10,102,194,0.6)', borderColor:'#0a66c2', borderWidth:1.5, borderRadius:5 }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(c)=>`노출 ${c.raw.toLocaleString()}회`}}}, scales:{ x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}}, y:{ticks:{color:'#1e293b',font:{size:11}},grid:{color:'#f1f5f9'}} } },
+  });
+
+  // TOP 10 참여 게시물
+  const top10Eng = d.topByEng.slice(0,10).reverse();
+  destroyChart('anTopEngChart');
+  charts.anTopEng = new Chart(document.getElementById('anTopEngChart'), {
+    type:'bar',
+    data:{ labels:top10Eng.map(p=>`${p.date?p.date.toLocaleDateString('ko-KR'):'-'}`), datasets:[{ label:'참여수', data:top10Eng.map(p=>p.val), backgroundColor:'rgba(217,119,6,0.6)', borderColor:'#d97706', borderWidth:1.5, borderRadius:5 }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(c)=>`참여 ${c.raw.toLocaleString()}회`}}}, scales:{ x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#f1f5f9'}}, y:{ticks:{color:'#1e293b',font:{size:11}},grid:{color:'#f1f5f9'}} } },
+  });
+
+  // 오디언스 차트
+  const palettes = { job:['#0a66c2','#1d4ed8','#3b82f6','#60a5fa','#93c5fd'], ind:['#7c3aed','#6d28d9','#8b5cf6','#a78bfa','#c4b5fd'], sen:['#d97706','#b45309','#f59e0b','#fbbf24','#fcd34d'], size:['#16a34a','#15803d','#22c55e','#4ade80','#86efac'] };
+  [
+    { key:'직책', id:'anJobChart', pal: palettes.job },
+    { key:'업종', id:'anIndChart', pal: palettes.ind },
+    { key:'연차', id:'anSenChart', pal: palettes.sen },
+    { key:'회사규모', id:'anSizeChart', pal: palettes.size },
+  ].forEach(({key, id, pal}) => {
+    const items = (d.audience[key]||[]).filter(i=>i.pct>0).slice(0,5);
+    destroyChart(id);
+    if (!items.length) return;
+    charts[id] = new Chart(document.getElementById(id), {
+      type:'doughnut',
+      data:{ labels:items.map(i=>`${i.label} (${(i.pct*100).toFixed(1)}%)`), datasets:[{ data:items.map(i=>i.pct), backgroundColor:pal, borderColor:'#fff', borderWidth:3 }] },
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'55%', plugins:{ legend:{ position:'bottom', labels:{ color:'#64748b', font:{size:10}, padding:8, boxWidth:12 } } } },
+    });
+  });
+
+  // 상위 회사 테이블
+  const companies = (d.audience['회사']||[]).filter(i=>i.pct>0);
+  document.getElementById('an-company-table').innerHTML = companies.length === 0
+    ? '<p style="color:var(--text-muted);font-size:13px;padding:12px 0">데이터 없음</p>'
+    : `<table class="data-table"><thead><tr><th>#</th><th>회사명</th><th>비율</th><th></th></tr></thead><tbody>
+      ${companies.map((c,i)=>`<tr>
+        <td style="color:var(--text-dim);font-size:12px">${i+1}</td>
+        <td style="font-weight:600">${esc(c.label)}</td>
+        <td style="color:var(--accent);font-weight:700">${(c.pct*100).toFixed(1)}%</td>
+        <td style="width:180px"><div style="background:var(--surface3);border-radius:4px;height:8px"><div style="background:var(--accent);border-radius:4px;height:8px;width:${Math.min(c.pct*100/2,100)}%"></div></div></td>
+      </tr>`).join('')}
+      </tbody></table>`;
+}
+
+// ── AI: Analytics ──
+async function runAnalyticsAI() {
+  const key = document.getElementById('an-ai-key').value.trim();
+  if (!key) { alert('API 키를 입력해주세요.'); return; }
+  const btn = document.getElementById('an-ai-btn'), res = document.getElementById('an-ai-result');
+  btn.disabled=true; btn.textContent='⏳ 분석 중...';
+  res.classList.add('active'); res.innerHTML='<span style="color:var(--text-muted)">분석 중입니다...</span>';
+  try {
+    const d = state.analytics;
+    const days=['일','월','화','수','목','금','토'];
+    const dow=Array(7).fill(null).map(()=>({sum:0,cnt:0}));
+    d.dailyImp.forEach(r=>{const day=r.date.getDay();dow[day].sum+=r.impressions;dow[day].cnt++;});
+    const dowAvg=dow.map(d=>d.cnt?Math.round(d.sum/d.cnt):0);
+    const bestDay=days[dowAvg.indexOf(Math.max(...dowAvg))];
+    const monthly={};
+    d.dailyImp.forEach(r=>{const k=`${r.date.getFullYear()}-${String(r.date.getMonth()+1).padStart(2,'0')}`;if(!monthly[k])monthly[k]={imp:0,fol:0};monthly[k].imp+=r.impressions;monthly[k].fol+=r.newFollowers;});
+    const bestMonth=Object.entries(monthly).sort((a,b)=>b[1].imp-a[1].imp)[0];
+    const topJobs=(d.audience['직책']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
+    const topInd=(d.audience['업종']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
+    const topSen=(d.audience['연차']||[]).slice(0,3).map(i=>`${i.label}(${(i.pct*100).toFixed(1)}%)`).join(', ');
+    const prompt=`당신은 LinkedIn 크리에이터 전략 전문가입니다. 아래 데이터를 분석해 한국어로 인사이트를 제공하세요.
+
+## 성과 데이터 (최근 365일)
+- 총 노출수: ${d.summary.totalImpressions.toLocaleString()} / 회원 도달: ${d.summary.memberReach.toLocaleString()}
+- 현재 팔로워: ${d.currentFollowers}명 (기간 내 +${d.dailyImp.reduce((s,r)=>s+r.newFollowers,0)}명)
+- 최고 노출 월: ${bestMonth?bestMonth[0]+' ('+bestMonth[1].imp.toLocaleString()+'회)':'-'}
+- 최고 노출 요일: ${bestDay}요일
+- 노출 TOP 게시물: ${d.topByImp.slice(0,3).map(p=>`${p.date?p.date.toLocaleDateString('ko-KR'):'-'} (${p.val.toLocaleString()}회)`).join(', ')}
+
+## 오디언스
+- 직책 TOP3: ${topJobs}
+- 업종 TOP3: ${topInd}
+- 연차 TOP3: ${topSen}
+- 주요 위치: ${(d.audience['위치']||[]).slice(0,2).map(i=>i.label).join(', ')}
+
+---
+**[1. 성과 분석]** 핵심 지표 평가 및 특이점 (3-4개 포인트)
+**[2. 오디언스 인사이트]** 팔로워 특성이 콘텐츠 전략에 주는 시사점 (3개)
+**[3. 성장 전략]** 노출·팔로워 성장을 위한 즉시 실행 가능한 방법 (3-4개)
+**[4. 타겟 맞춤 콘텐츠 제안]** 오디언스 직책/업종을 고려한 콘텐츠 주제 3가지`;
+    res.innerHTML=formatAI(await callClaude(key,prompt));
+  } catch(e){res.innerHTML=`<span style="color:var(--red)">⚠️ ${esc(e.message)}</span>`;}
+  finally{btn.disabled=false;btn.innerHTML='✨ AI 분석 시작';}
+}
 </script>
 </body>
 </html>
