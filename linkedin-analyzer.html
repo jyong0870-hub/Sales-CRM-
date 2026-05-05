@@ -764,9 +764,9 @@ function parseLinkedInAnalytics(arrayBuffer) {
   // 카테고리명 정규화: LinkedIn 한/영 버전 + 공백 차이 대응
   function normCat(raw) {
     const s = String(raw||'').trim();
-    if (/직책|직무|job.?func|position|title/i.test(s)) return '직책';
-    if (/업종|산업|industry/i.test(s)) return '업종';
-    if (/연차|경력|seniority|senior/i.test(s)) return '연차';
+    if (/직책|직무|직함|job.?func|position|title/i.test(s)) return '직책';
+    if (/업종|업계|산업|industry/i.test(s)) return '업종';
+    if (/연차|경력|직급|seniority|senior/i.test(s)) return '연차';
     if (/회사\s*규모|company.?size/i.test(s)) return '회사규모';
     if (/^회사$|^company$|employer/i.test(s)) return '회사';
     if (/위치|지역|location|country|city|region/i.test(s)) return '위치';
